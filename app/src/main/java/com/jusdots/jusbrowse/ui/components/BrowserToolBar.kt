@@ -56,7 +56,7 @@ fun BrowserToolBar(
                     // Multi-view toggle
                     IconButton(
                         onClick = { viewModel.toggleMultiViewMode() },
-                        enabled = viewModel.tabs.size >= 2
+                        enabled = true // Always allow switching to desktop/window mode
                     ) {
                         Icon(Icons.Default.GridView, "Multi-View")
                     }
