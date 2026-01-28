@@ -39,7 +39,8 @@ fun BrowserContextMenu(
     onCopyLink: (String) -> Unit,
     onShareLink: (String) -> Unit,
     onDownloadImage: (String) -> Unit,
-    onShareImage: (String) -> Unit
+    onShareImage: (String) -> Unit,
+    onPinToDesktop: (String, String) -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -125,6 +126,11 @@ fun BrowserContextMenu(
                     text = "Share link",
                     icon = Icons.Default.Share,
                     onClick = { onShareLink(targetUrl) }
+                )
+                ContextMenuItem(
+                    text = "Pin to Desktop",
+                    icon = Icons.Default.PushPin,
+                    onClick = { onPinToDesktop(data.title.ifEmpty { "Shortcut" }, targetUrl) }
                 )
             }
             

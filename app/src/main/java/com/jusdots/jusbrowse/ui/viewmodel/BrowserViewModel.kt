@@ -18,6 +18,7 @@ import com.jusdots.jusbrowse.data.repository.DownloadRepository
 import com.jusdots.jusbrowse.data.repository.PreferencesRepository
 import com.jusdots.jusbrowse.data.repository.SiteSettingsRepository
 import com.jusdots.jusbrowse.data.models.DownloadItem
+import com.jusdots.jusbrowse.data.models.Shortcut
 import com.jusdots.jusbrowse.ui.screens.Screen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +69,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val history = historyRepository.getAllHistory()
     val recentHistory = historyRepository.getRecentHistory(10)
     val downloads = downloadRepository.allDownloads
+
+    // Desktop Shortcuts
+    val pinnedShortcuts: SnapshotStateList<Shortcut> = mutableStateListOf()
 
     // Preferences
     val searchEngine = preferencesRepository.searchEngine
@@ -137,6 +141,25 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
         if (tabs.isEmpty()) {
             createNewTab()
+        }
+
+        val savedShortcutsJson = preferencesRepository.savedShortcuts.first()
+        if (!savedShortcutsJson.isNullOrBlank()) {
+             try {
+                 val shortcutsType = object : TypeToken<List<Shortcut>>() {}.type
+                 val loadedShortcuts: List<Shortcut> = gson.fromJson(savedShortcutsJson, shortcutsType)
+                 pinnedShortcuts.clear()
+                 pinnedShortcuts.addAll(loadedShortcuts)
+             } catch (e: Exception) {
+                 // Ignore
+             }
+        }
+    }
+
+    private fun saveShortcuts() {
+        viewModelScope.launch {
+            val json = gson.toJson(pinnedShortcuts.toList())
+            preferencesRepository.saveShortcuts(json)
         }
     }
 
@@ -533,6 +556,25 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     fileSize = fileSize
                 )
             )
+                }
+    }
+
+    // Shortcuts Management
+    fun pinShortcut(title: String, url: String) {
+        val shortcut = Shortcut(title = title, url = url)
+        pinnedShortcuts.add(shortcut)
+        saveShortcuts()
+    }
+
+    fun unpinShortcut(shortcut: Shortcut) {
+        pinnedShortcuts.remove(shortcut)
+        saveShortcuts()
+    }
+
+    fun pinCurrentTabToDesktop() {
+        if (_activeTabIndex.value in tabs.indices) {
+            val currentTab = tabs[_activeTabIndex.value]
+            pinShortcut(currentTab.title.ifEmpty { currentTab.url }, currentTab.url)
         }
     }
 }

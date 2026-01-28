@@ -222,6 +222,10 @@ fun TabWindow(
                 }
                 context.startActivity(android.content.Intent.createChooser(sendIntent, null))
                 showContextMenu = false
+            },
+            onPinToDesktop = { title, url ->
+                viewModel.pinShortcut(title, url)
+                showContextMenu = false
             }
         )
     }

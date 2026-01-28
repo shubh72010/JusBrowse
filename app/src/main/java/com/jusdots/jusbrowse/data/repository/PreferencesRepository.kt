@@ -27,6 +27,7 @@ class PreferencesRepository(private val context: Context) {
         val FLAG_SECURE_ENABLED = booleanPreferencesKey("flag_secure_enabled")
         val DO_NOT_TRACK_ENABLED = booleanPreferencesKey("do_not_track_enabled")
         val COOKIE_BLOCKER_ENABLED = booleanPreferencesKey("cookie_blocker_enabled")
+        val SAVED_SHORTCUTS = stringPreferencesKey("saved_shortcuts")
     }
 
     val searchEngine: Flow<String> = context.dataStore.data.map { preferences ->
@@ -130,6 +131,16 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setDoNotTrackEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.DO_NOT_TRACK_ENABLED] = enabled
+        }
+    }
+
+    val savedShortcuts: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.SAVED_SHORTCUTS]
+    }
+
+    suspend fun saveShortcuts(shortcutsJson: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.SAVED_SHORTCUTS] = shortcutsJson
         }
     }
 
