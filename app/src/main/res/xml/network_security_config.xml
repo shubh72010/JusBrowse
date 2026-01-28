@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Security: Network Security Configuration for TLS enforcement -->
+<network-security-config>
+    <!-- Base config: No cleartext traffic, only system-trusted CAs -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
