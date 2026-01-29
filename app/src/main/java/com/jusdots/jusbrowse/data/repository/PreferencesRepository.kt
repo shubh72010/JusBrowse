@@ -28,6 +28,8 @@ class PreferencesRepository(private val context: Context) {
         val DO_NOT_TRACK_ENABLED = booleanPreferencesKey("do_not_track_enabled")
         val COOKIE_BLOCKER_ENABLED = booleanPreferencesKey("cookie_blocker_enabled")
         val SAVED_SHORTCUTS = stringPreferencesKey("saved_shortcuts")
+        val SHOW_TAB_ICONS = booleanPreferencesKey("show_tab_icons")
+        val THEME_PRESET = stringPreferencesKey("theme_preset")
     }
 
     val searchEngine: Flow<String> = context.dataStore.data.map { preferences ->
@@ -76,6 +78,14 @@ class PreferencesRepository(private val context: Context) {
 
     val cookieBlockerEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferenceKeys.COOKIE_BLOCKER_ENABLED] ?: false
+    }
+
+    val showTabIcons: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.SHOW_TAB_ICONS] ?: false
+    }
+
+    val themePreset: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.THEME_PRESET] ?: "SYSTEM"
     }
 
     suspend fun setSearchEngine(searchEngine: String) {
@@ -147,6 +157,18 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setCookieBlockerEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.COOKIE_BLOCKER_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setShowTabIcons(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.SHOW_TAB_ICONS] = enabled
+        }
+    }
+
+    suspend fun setThemePreset(preset: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.THEME_PRESET] = preset
         }
     }
 }

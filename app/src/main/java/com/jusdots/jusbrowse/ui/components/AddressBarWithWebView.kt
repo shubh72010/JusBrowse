@@ -31,6 +31,12 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.CookieManager
 import java.io.ByteArrayInputStream
+import android.content.ClipData
+import android.view.DragEvent
+import android.view.View
+import android.widget.FrameLayout
+import android.os.Build
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun AddressBarWithWebView(
@@ -48,8 +54,10 @@ fun AddressBarWithWebView(
     var urlText by remember(tab?.url) { mutableStateOf(tab?.url?.replace("about:blank", "") ?: "") }
     
     val focusManager = LocalFocusManager.current
+    var isDragging by remember { mutableStateOf(false) }
     
-    Column(modifier = modifier) {
+    Box(modifier = modifier) {
+        Column(modifier = Modifier.fillMaxSize()) {
         // Address Bar
         Row(
             modifier = Modifier
@@ -152,6 +160,29 @@ fun AddressBarWithWebView(
 
                              if (tab.isPrivate) {
                                  settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                             }
+
+                             setOnLongClickListener { v ->
+                                 val hitTest = (v as WebView).hitTestResult
+                                 if (hitTest.type == WebView.HitTestResult.IMAGE_TYPE || 
+                                     hitTest.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
+                                     
+                                     val url = hitTest.extra
+                                     if (url != null) {
+                                         val item = ClipData.Item(url)
+                                         val data = ClipData("Image", arrayOf("text/plain"), item)
+                                         val shadow = View.DragShadowBuilder(v)
+                                         
+                                         if (Build.VERSION.SDK_INT >= 24) {
+                                             v.startDragAndDrop(data, shadow, null, 0)
+                                         } else {
+                                             @Suppress("DEPRECATION")
+                                             v.startDrag(data, shadow, null, 0)
+                                         }
+                                         isDragging = true
+                                         true
+                                     } else false
+                                 } else false
                              }
                              
                              webViewClient = object : WebViewClient() {
@@ -260,6 +291,75 @@ fun AddressBarWithWebView(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+        }
+        }
+        
+        // Drop Zone Overlay
+        if (isDragging) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 96.dp, end = 16.dp)
+                    .size(120.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
+                        shape = androidx.compose.foundation.shape.CircleShape
+                    )
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                // Visuals
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Drop",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Text(
+                        text = "Drop to\nDownload",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+
+                // Invisible AndroidView to catch the Drag Events
+                AndroidView(
+                    factory = { ctx ->
+                        FrameLayout(ctx).apply {
+                            setOnDragListener { _, event ->
+                                when (event.action) {
+                                    DragEvent.ACTION_DRAG_STARTED -> true
+                                    DragEvent.ACTION_DRAG_ENTERED -> true
+                                    DragEvent.ACTION_DRAG_EXITED -> true
+                                    DragEvent.ACTION_DROP -> {
+                                        // Handle Drop
+                                        val clipData = event.clipData
+                                        if (clipData != null && clipData.itemCount > 0) {
+                                            val url = clipData.getItemAt(0).text.toString()
+                                            // Trigger Download
+                                            // Mock file name and size since we don't have HEAD request here
+                                            val fileName = "download_${System.currentTimeMillis()}.jpg" 
+                                            // We could improve this by doing a proper download request or passing to viewmodel
+                                            viewModel.addDownload(fileName, url, "Downloads/$fileName", 0L)
+                                            android.widget.Toast.makeText(ctx, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                        isDragging = false
+                                        true
+                                    }
+                                    DragEvent.ACTION_DRAG_ENDED -> {
+                                        isDragging = false
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
     }

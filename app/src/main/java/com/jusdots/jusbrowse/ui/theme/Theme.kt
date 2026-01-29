@@ -28,15 +28,31 @@ private val LightColorScheme = lightColorScheme(
 fun JusBrowse2Theme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
+    themePreset: String = "SYSTEM",
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    val preset = try {
+        BrowserTheme.valueOf(themePreset)
+    } catch (e: Exception) {
+        BrowserTheme.SYSTEM
+    }
+
+    val colorScheme = when (preset) {
+        BrowserTheme.VIVALDI_RED -> if (darkTheme) VivaldiRedDark else VivaldiRedLight
+        BrowserTheme.OCEAN_BLUE -> if (darkTheme) OceanBlueDark else OceanBlueLight
+        BrowserTheme.FOREST_GREEN -> if (darkTheme) ForestGreenDark else ForestGreenLight
+        BrowserTheme.MIDNIGHT_PURPLE -> if (darkTheme) MidnightPurpleDark else MidnightPurpleLight
+        BrowserTheme.SUNSET_ORANGE -> if (darkTheme) SunsetOrangeDark else SunsetOrangeLight
+        BrowserTheme.SYSTEM -> {
+            when {
+                dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+                    val context = LocalContext.current
+                    if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+                }
+                darkTheme -> DarkColorScheme
+                else -> LightColorScheme
+            }
         }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
     }
 
     MaterialTheme(

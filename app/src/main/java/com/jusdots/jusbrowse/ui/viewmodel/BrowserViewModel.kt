@@ -83,6 +83,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val flagSecureEnabled = preferencesRepository.flagSecureEnabled
     val doNotTrackEnabled = preferencesRepository.doNotTrackEnabled
     val cookieBlockerEnabled = preferencesRepository.cookieBlockerEnabled
+    val showTabIcons = preferencesRepository.showTabIcons
+    val themePreset = preferencesRepository.themePreset
 
     // Multi-View Mode
     private val _isMultiViewMode = MutableStateFlow(false)
@@ -500,6 +502,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun setCookieBlockerEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setCookieBlockerEnabled(enabled)
+        }
+    }
+
+    fun setShowTabIcons(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setShowTabIcons(enabled)
+        }
+    }
+
+    fun setThemePreset(preset: String) {
+        viewModelScope.launch {
+            preferencesRepository.setThemePreset(preset)
         }
     }
 

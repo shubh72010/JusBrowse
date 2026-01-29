@@ -1,47 +1,74 @@
 package com.jusdots.jusbrowse.security
 
 /**
- * Repository of "Golden Profiles"
- * These are internally consistent, verified fingerprints of real devices.
- * NEVER generate random values for these fields.
+ * Static repository of verified "Golden Profiles".
+ * These are consistent configurations of real devices.
  */
 object PersonaRepository {
 
     private val PIXEL_8_PRO = FakePersona(
-        id = "pixel_8_pro_android_14",
+        id = "pixel_8_pro",
         displayName = "Pixel 8 Pro",
         flagEmoji = "🇺🇸",
-        userAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36",
+        userAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
         brands = listOf(
             FakePersona.BrandVersion("Not_A Brand", "8"),
             FakePersona.BrandVersion("Chromium", "120"),
             FakePersona.BrandVersion("Google Chrome", "120")
         ),
         platform = "Android",
-        platformVersion = "14.0.0",
+        platformVersion = "14",
         model = "Pixel 8 Pro",
         mobile = true,
         headers = mapOf(
+            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
             "Accept-Language" to "en-US,en;q=0.9",
         ),
         screenWidth = 1344,
         screenHeight = 2992,
         pixelRatio = 3.0,
-        cpuCores = 8,
+        cpuCores = 9, // Tensor G3
         ramGB = 12,
-        videoCardRenderer = "Mali-G715-Immortalis MC11",
-        videoCardVendor = "ARM",
+        videoCardRenderer = "Mali-G715",
+        videoCardVendor = "Google",
         noiseSeed = 1001L,
         locale = "en-US",
         languages = listOf("en-US", "en"),
-        timezone = "America/New_York"
+        timezone = "America/New_York",
+        clockSkewMs = 12,
+        networkType = "4g",
+        networkDownlink = 12.5,
+        networkRtt = 45,
+        webglMaxTextureSize = 8192,
+        webglMaxRenderBufferSize = 8192,
+        webglExtensions = listOf(
+            "EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "OES_standard_derivatives",
+            "WEBGL_debug_renderer_info", "WEBGL_lose_context", "ANGLE_instanced_arrays"
+        ),
+        mediaDeviceLabels = mapOf(
+            "audioinput" to "Internal Microphone",
+            "audiooutput" to "Phone Speaker",
+            "videoinput_front" to "camera2 1, facing front",
+            "videoinput_back" to "camera2 0, facing back"
+        ),
+        webglParams = mapOf(
+            36347 to 1024, // MAX_VERTEX_UNIFORM_VECTORS
+            36348 to 1024, // MAX_FRAGMENT_UNIFORM_VECTORS
+            36349 to 32,   // MAX_VARYING_VECTORS
+            35660 to 16,   // MAX_VERTEX_ATTRIBS
+            35661 to 80    // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+        ),
+        audioBaseLatency = 0.012,
+        fontJitterSeed = 101L
     )
 
     private val GALAXY_S23_ULTRA = FakePersona(
-        id = "samsung_s23_ultra",
+        id = "s23_ultra",
         displayName = "Galaxy S23 Ultra",
         flagEmoji = "🇰🇷",
-        userAgent = "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.193 Mobile Safari/537.36",
+        userAgent = "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
         brands = listOf(
             FakePersona.BrandVersion("Not?A_Brand", "24"),
             FakePersona.BrandVersion("Chromium", "119"),
@@ -64,7 +91,32 @@ object PersonaRepository {
         noiseSeed = 2002L,
         locale = "ko-KR",
         languages = listOf("ko-KR", "ko", "en-US", "en"),
-        timezone = "Asia/Seoul"
+        timezone = "Asia/Seoul",
+        clockSkewMs = -24,
+        networkType = "4g",
+        networkDownlink = 10.0,
+        networkRtt = 40,
+        webglMaxTextureSize = 8192,
+        webglMaxRenderBufferSize = 8192,
+        webglExtensions = listOf(
+            "EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "OES_standard_derivatives",
+            "WEBGL_debug_renderer_info", "WEBGL_lose_context", "ANGLE_instanced_arrays"
+        ),
+        mediaDeviceLabels = mapOf(
+            "audioinput" to "Internal Microphone",
+            "audiooutput" to "Speaker",
+            "videoinput_front" to "camera2 1, facing front",
+            "videoinput_back" to "camera2 0, facing back"
+        ),
+        webglParams = mapOf(
+            36347 to 4096, // MAX_VERTEX_UNIFORM_VECTORS
+            36348 to 4096, // MAX_FRAGMENT_UNIFORM_VECTORS
+            36349 to 32,   // MAX_VARYING_VECTORS
+            35660 to 16,   // MAX_VERTEX_ATTRIBS
+            35661 to 128   // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+        ),
+        audioBaseLatency = 0.008,
+        fontJitterSeed = 202L
     )
 
     private val XIAOMI_13 = FakePersona(
@@ -93,7 +145,32 @@ object PersonaRepository {
         noiseSeed = 3003L,
         locale = "zh-CN",
         languages = listOf("zh-CN", "zh"),
-        timezone = "Asia/Shanghai"
+        timezone = "Asia/Shanghai",
+        clockSkewMs = 5,
+        networkType = "wifi",
+        networkDownlink = 50.0,
+        networkRtt = 15,
+        webglMaxTextureSize = 8192,
+        webglMaxRenderBufferSize = 8192,
+        webglExtensions = listOf(
+            "EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "OES_standard_derivatives",
+            "WEBGL_debug_renderer_info", "WEBGL_lose_context", "ANGLE_instanced_arrays"
+        ),
+        mediaDeviceLabels = mapOf(
+            "audioinput" to "Internal Microphone",
+            "audiooutput" to "Speaker",
+            "videoinput_front" to "camera2 1, facing front",
+            "videoinput_back" to "camera2 0, facing back"
+        ),
+        webglParams = mapOf(
+            36347 to 4096, // MAX_VERTEX_UNIFORM_VECTORS
+            36348 to 4096, // MAX_FRAGMENT_UNIFORM_VECTORS
+            36349 to 32,   // MAX_VARYING_VECTORS
+            35660 to 16,   // MAX_VERTEX_ATTRIBS
+            35661 to 128   // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+        ),
+        audioBaseLatency = 0.009,
+        fontJitterSeed = 303L
     )
 
     // A generic fallback or randomizer could pick one of these

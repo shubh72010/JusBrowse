@@ -24,6 +24,20 @@ object FakeModeManager {
     private val _currentPersona = MutableStateFlow<FakePersona?>(null)
     val currentPersona: StateFlow<FakePersona?> = _currentPersona.asStateFlow()
 
+    private var sessionBatteryLevel: Double = 0.85
+    private var sessionBatteryCharging: Boolean = true
+
+    /**
+     * Randomize session-specific values (Battery)
+     * Called when fake mode is enabled or initialized.
+     */
+    private fun randomizeSessionState() {
+        // Battery between 20% and 98%
+        sessionBatteryLevel = 0.20 + (Math.random() * 0.78)
+        // Charging 50/50
+        sessionBatteryCharging = Math.random() > 0.5
+    }
+
     /**
      * Initialize logic (load saved persona)
      */
@@ -35,6 +49,7 @@ object FakeModeManager {
             if (persona != null) {
                 _currentPersona.value = persona
                 _isEnabled.value = true
+                randomizeSessionState() // Randomize battery for this session
             }
         }
     }
@@ -53,6 +68,7 @@ object FakeModeManager {
      */
     fun enableFakeMode(context: Context, persona: FakePersona) {
         if (_currentPersona.value != persona) {
+            randomizeSessionState() // Randomize battery for this session
             // Save new state
             saveState(context, persona.id)
             // Restart to apply namespace
@@ -146,120 +162,312 @@ object FakeModeManager {
      * Generate persona-specific fingerprinting script
      */
     private fun generatePersonaScript(persona: FakePersona): String {
+        // Calculate Timezone Offset (Phase 1 Fix)
+        val tz = java.util.TimeZone.getTimeZone(persona.timezone)
+        val offsetMillis = tz.getOffset(System.currentTimeMillis())
+        val jsOffsetMinutes = -(offsetMillis / 60000)
+        
+        val tzDisplayName = tz.getDisplayName(tz.inDaylightTime(java.util.Date()), java.util.TimeZone.LONG)
+        
+        // Logical Screen (Phase 1 Fix)
+        val logicWidth = (persona.screenWidth / persona.pixelRatio).toInt()
+        val logicHeight = (persona.screenHeight / persona.pixelRatio).toInt()
+
         return """
             (function() {
                 'use strict';
-                console.log('[JusBrowse] Persona Active: ${persona.displayName}');
+                const NOISE_SEED = ${persona.noiseSeed};
+                const CLOCK_SKEW_MS = ${persona.clockSkewMs};
                 
-                // ===== SCREEN SPOOFING (Stable) =====
-                try {
-                    const screenProps = {
-                        width: ${persona.screenWidth},
-                        height: ${persona.screenHeight},
-                        availWidth: ${persona.screenWidth},
-                        availHeight: ${persona.screenHeight},
-                        colorDepth: 24,
-                        pixelDepth: 24
-                    };
-                    for (const prop in screenProps) {
-                        Object.defineProperty(screen, prop, { get: () => screenProps[prop] });
+                // Helper: Pseudo-random generator using seeds
+                const rnd = (seed) => {
+                    const x = Math.sin(seed) * 10000;
+                    return x - Math.floor(x);
+                };
+
+                // ===== PHASE 4: NATIVE FUNCTION CAMOUFLAGE =====
+                // This prevents scripts from detecting our overrides via .toString()
+                const originalToString = Function.prototype.toString;
+                const fakeToStringSymbol = Symbol('fakeToString');
+                
+                const makeNative = (fn, name) => {
+                    if (name) {
+                        Object.defineProperty(fn, 'name', { value: name, configurable: true });
                     }
+                    const nativeString = `function ${"$"}{fn.name || ''}() { [native code] }`;
+                    fn[fakeToStringSymbol] = nativeString;
+                    return fn;
+                };
+
+                Function.prototype.toString = function() {
+                    if (typeof this === 'function' && this[fakeToStringSymbol]) {
+                        return this[fakeToStringSymbol];
+                    }
+                    return originalToString.call(this);
+                };
+                makeNative(Function.prototype.toString, 'toString');
+
+                // ===== TIME & PERFORMANCE (Phase 3+4: Precision Refinement) =====
+                try {
+                    const perfOffset = (rnd(NOISE_SEED) * 5) - 2.5; // Subtle skew
                     
-                    Object.defineProperty(window, 'devicePixelRatio', { get: () => ${persona.pixelRatio} });
-                    Object.defineProperty(window, 'innerWidth', { get: () => ${persona.screenWidth} });
-                    Object.defineProperty(window, 'innerHeight', { get: () => ${persona.screenHeight} });
-                    Object.defineProperty(window, 'outerWidth', { get: () => ${persona.screenWidth} });
-                    Object.defineProperty(window, 'outerHeight', { get: () => ${persona.screenHeight} });
+                    const originalNow = Performance.prototype.now;
+                    Performance.prototype.now = makeNative(function() {
+                        return originalNow.call(this) + perfOffset;
+                    }, 'now');
+                    
+                    const originalDate = Date;
+                    const originalDateNow = Date.now;
+                    
+                    Date.now = makeNative(function() {
+                        return originalDateNow() + CLOCK_SKEW_MS;
+                    }, 'now');
+                    
+                    window.Date = makeNative(function(...args) {
+                        if (args.length === 0) {
+                            return new originalDate(originalDateNow() + CLOCK_SKEW_MS);
+                        }
+                        return new originalDate(...args);
+                    }, 'Date');
+                    
+                    window.Date.prototype = originalDate.prototype;
+                    window.Date.now = Date.now;
+                    window.Date.parse = makeNative(originalDate.parse, 'parse');
+                    window.Date.UTC = makeNative(originalDate.UTC, 'UTC');
+                } catch(e) {}
+
+                // ===== AUTOMATION & PRIVACY =====
+                try {
+                    Object.defineProperty(navigator, 'webdriver', { get: makeNative(() => false, 'get webdriver') });
+                    Object.defineProperty(navigator, 'doNotTrack', { get: makeNative(() => '${persona.doNotTrack}', 'get doNotTrack') });
                 } catch(e) {}
                 
-                // ===== NAVIGATOR SPOOFING =====
+                // ===== BATTERY API =====
                 try {
-                    Object.defineProperty(navigator, 'userAgent', { get: () => '${persona.userAgent}' });
-                    Object.defineProperty(navigator, 'platform', { get: () => '${persona.platform} ${persona.platformVersion}' }); // Simplified
-                    Object.defineProperty(navigator, 'maxTouchPoints', { get: () => ${if (persona.mobile) 5 else 0} });
-                    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => ${persona.cpuCores} });
-                    if (navigator.deviceMemory !== undefined) {
-                        Object.defineProperty(navigator, 'deviceMemory', { get: () => ${persona.ramGB} });
-                    }
+                    const batteryMock = {
+                        charging: $sessionBatteryCharging,
+                        chargingTime: $sessionBatteryCharging ? 3600 : Infinity,
+                        dischargingTime: $sessionBatteryCharging ? Infinity : 18000,
+                        level: $sessionBatteryLevel,
+                        addEventListener: makeNative(function() {}, 'addEventListener'),
+                        removeEventListener: makeNative(function() {}, 'removeEventListener'),
+                        dispatchEvent: makeNative(function() { return false; }, 'dispatchEvent'),
+                        onchargingchange: null,
+                        onchargingtimechange: null,
+                        ondischargingtimechange: null,
+                        onlevelchange: null
+                    };
+                    
+                    const p = Promise.resolve(batteryMock);
+                    navigator.getBattery = makeNative(function() { return p; }, 'getBattery');
                 } catch(e) {}
-                
-                // ===== CLIENT HINTS (Important!) =====
-                // Only works if the browser supports navigator.userAgentData
+
+                // ===== NETWORK INFO =====
                 try {
-                    if (navigator.userAgentData) {
-                        const brands = [${persona.brands.joinToString(",") { "{brand: '${it.brand}', version: '${it.version}'}" }}];
-                        const highEntropyValues = {
-                            architecture: 'arm',
-                            bitness: '64',
-                            brands: brands,
-                            mobile: ${persona.mobile},
-                            model: '${persona.model}',
-                            platform: '${persona.platform}',
-                            platformVersion: '${persona.platformVersion}',
-                            uaFullVersion: '${persona.browserVersion}'
-                        };
-                        
-                        Object.defineProperty(navigator.userAgentData, 'brands', { get: () => brands });
-                        Object.defineProperty(navigator.userAgentData, 'mobile', { get: () => ${persona.mobile} });
-                        Object.defineProperty(navigator.userAgentData, 'platform', { get: () => '${persona.platform}' });
-                        
-                        navigator.userAgentData.getHighEntropyValues = function(hints) {
-                            return Promise.resolve(highEntropyValues);
-                        };
+                    const connection = {
+                        effectiveType: '${persona.networkType}',
+                        rtt: ${persona.networkRtt},
+                        downlink: ${persona.networkDownlink},
+                        saveData: false,
+                        addEventListener: makeNative(function() {}, 'addEventListener'),
+                        removeEventListener: makeNative(function() {}, 'removeEventListener'),
+                        dispatchEvent: makeNative(function() { return false; }, 'dispatchEvent')
+                    };
+                    Object.defineProperty(navigator, 'connection', { get: makeNative(() => connection, 'get connection') });
+                } catch(e) {}
+
+                // ===== MEDIA DEVICES (Phase 4: Accurate Labels) =====
+                try {
+                    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                        const labels = { ${persona.mediaDeviceLabels.entries.joinToString(",") { "'${it.key}': '${it.value}'" }} };
+                        const fakeDevices = [
+                            { deviceId: 'mic_' + NOISE_SEED, kind: 'audioinput', label: labels['audioinput'] || 'Internal Microphone', groupId: 'group1_' + NOISE_SEED },
+                            { deviceId: 'spk_' + NOISE_SEED, kind: 'audiooutput', label: labels['audiooutput'] || 'Speaker', groupId: 'group1_' + NOISE_SEED },
+                            { deviceId: 'back_' + NOISE_SEED, kind: 'videoinput', label: labels['videoinput_back'] || 'Back Camera', groupId: 'group2_' + NOISE_SEED }
+                        ];
+                        if (${persona.mobile}) {
+                             fakeDevices.push({ deviceId: 'front_' + NOISE_SEED, kind: 'videoinput', label: labels['videoinput_front'] || 'Front Camera', groupId: 'group2_' + NOISE_SEED });
+                        }
+
+                        navigator.mediaDevices.enumerateDevices = makeNative(function() {
+                            return Promise.resolve(fakeDevices);
+                        }, 'enumerateDevices');
                     }
                 } catch(e) {}
 
+                // ===== WebRTC LEAK PREVENTION (Phase 4: Robust Candidate Filtering) =====
+                try {
+                    const originalRTCPeerConnection = window.RTCPeerConnection;
+                    if (originalRTCPeerConnection) {
+                         window.RTCPeerConnection = makeNative(function(config) {
+                             const pc = new originalRTCPeerConnection(config);
+                             
+                             // Intercepting onicecandidate is the best JS-only way to block leaks
+                             let originalOnIceCandidate = null;
+                             Object.defineProperty(pc, 'onicecandidate', {
+                                 get: () => originalOnIceCandidate,
+                                 set: (val) => {
+                                     originalOnIceCandidate = makeNative(function(event) {
+                                         if (event.candidate && (event.candidate.candidate.includes('.local') || 
+                                             /192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\./.test(event.candidate.candidate))) {
+                                             // Drop local candidates
+                                             return;
+                                         }
+                                         if (val) val.call(pc, event);
+                                     }, 'onicecandidate');
+                                 }
+                             });
+                             return pc;
+                         }, 'RTCPeerConnection');
+                         window.RTCPeerConnection.prototype = originalRTCPeerConnection.prototype;
+                    }
+                } catch(e) {}
+
+                // ===== SCREEN & VIEWPORT =====
+                try {
+                    const screenProps = {
+                        width: $logicWidth, height: $logicHeight,
+                        availWidth: $logicWidth, availHeight: $logicHeight,
+                        colorDepth: 24, pixelDepth: 24
+                    };
+                    for (const prop in screenProps) {
+                        Object.defineProperty(screen, prop, { get: makeNative(() => screenProps[prop], 'get ' + prop) });
+                    }
+                    Object.defineProperty(window, 'devicePixelRatio', { get: makeNative(() => ${persona.pixelRatio}, 'get devicePixelRatio') });
+                    ['innerWidth', 'innerHeight', 'outerWidth', 'outerHeight'].forEach(prop => {
+                        Object.defineProperty(window, prop, { get: makeNative(() => (prop.includes('Width') ? $logicWidth : $logicHeight), 'get ' + prop) });
+                    });
+                } catch(e) {}
+                
+                // ===== NAVIGATOR & CLIENT HINTS =====
+                try {
+                    Object.defineProperty(navigator, 'userAgent', { get: makeNative(() => '${persona.userAgent}', 'get userAgent') });
+                    Object.defineProperty(navigator, 'platform', { get: makeNative(() => 'Linux armv8l', 'get platform') }); 
+                    Object.defineProperty(navigator, 'maxTouchPoints', { get: makeNative(() => ${if (persona.mobile) 5 else 0}, 'get maxTouchPoints') });
+                    Object.defineProperty(navigator, 'hardwareConcurrency', { get: makeNative(() => ${persona.cpuCores}, 'get hardwareConcurrency') });
+                    if (navigator.deviceMemory !== undefined) {
+                        Object.defineProperty(navigator, 'deviceMemory', { get: makeNative(() => ${persona.ramGB}, 'get deviceMemory') });
+                    }
+
+                    if (navigator.userAgentData) {
+                        const brands = [${persona.brands.joinToString(",") { "{brand: '${it.brand}', version: '${it.version}'}" }}];
+                        const highEntropyValues = {
+                            architecture: 'arm', bitness: '64', brands: brands,
+                            mobile: ${persona.mobile}, model: '${persona.model}',
+                            platform: '${persona.platform}', platformVersion: '${persona.platformVersion}',
+                            uaFullVersion: '${persona.browserVersion}'
+                        };
+                        Object.defineProperty(navigator.userAgentData, 'brands', { get: makeNative(() => brands, 'get brands') });
+                        Object.defineProperty(navigator.userAgentData, 'mobile', { get: makeNative(() => ${persona.mobile}, 'get mobile') });
+                        Object.defineProperty(navigator.userAgentData, 'platform', { get: makeNative(() => '${persona.platform}', 'get platform') });
+                        navigator.userAgentData.getHighEntropyValues = makeNative((hints) => Promise.resolve(highEntropyValues), 'getHighEntropyValues');
+                    }
+                } catch(e) {}
+                
                 // ===== LOCALE & TIMEZONE =====
                 try {
-                    Object.defineProperty(navigator, 'language', { get: () => '${persona.locale}' });
-                    Object.defineProperty(navigator, 'languages', { get: () => ${persona.languages.joinToString(",", "[", "]") { "'$it'" }} });
+                    Object.defineProperty(navigator, 'language', { get: makeNative(() => '${persona.locale}', 'get language') });
+                    Object.defineProperty(navigator, 'languages', { get: makeNative(() => ${persona.languages.joinToString(",", "[", "]") { "'$it'" }}, 'get languages') });
                     
                     const originalDateTimeFormat = Intl.DateTimeFormat;
-                    Intl.DateTimeFormat = function(locales, options) {
+                    window.Intl.DateTimeFormat = makeNative(function(locales, options) {
                         options = options || {};
                         if (!options.timeZone) options.timeZone = '${persona.timezone}';
                         return new originalDateTimeFormat(locales, options);
-                    };
-                    Object.setPrototypeOf(Intl.DateTimeFormat, originalDateTimeFormat);
+                    }, 'DateTimeFormat');
+                    window.Intl.DateTimeFormat.prototype = originalDateTimeFormat.prototype;
+                    Object.setPrototypeOf(window.Intl.DateTimeFormat, originalDateTimeFormat);
+                    
+                    Date.prototype.getTimezoneOffset = makeNative(function() { return $jsOffsetMinutes; }, 'getTimezoneOffset');
+                    
+                    const targetOffsetMin = $jsOffsetMinutes;
+                    const targetTzName = '$tzDisplayName';
+                    const originalToStringDate = Date.prototype.toString;
+                    
+                    Date.prototype.toString = makeNative(function() {
+                        const utcMillis = this.getTime();
+                        if (isNaN(utcMillis)) return originalToStringDate.call(this);
+                        
+                        const options = {
+                            weekday: 'short', month: 'short', day: '2-digit', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit', second: '2-digit',
+                            hour12: false, timeZone: '${persona.timezone}'
+                        };
+                        const formatter = new originalDateTimeFormat('en-US', options);
+                        const parts = formatter.formatToParts(this);
+                        const p = {}; parts.forEach(part => p[part.type] = part.value);
+                        
+                        const offsetHours = Math.floor(Math.abs(targetOffsetMin) / 60).toString().padStart(2, '0');
+                        const offsetMins = (Math.abs(targetOffsetMin) % 60).toString().padStart(2, '0');
+                        const sign = targetOffsetMin > 0 ? '-' : '+';
+                        return `${"$"}{p.weekday} ${"$"}{p.month} ${"$"}{p.day} ${"$"}{p.year} ${"$"}{p.hour}:${"$"}{p.minute}:${"$"}{p.second} GMT${"$"}{sign}${"$"}{offsetHours}${"$"}{offsetMins} (${"$"}{targetTzName})`;
+                    }, 'toString');
                 } catch(e) {}
-                
-                // ===== WEBGL SPOOFING =====
-                const getParameterProxy = function(target) {
-                    return function(param) {
-                        if (param === 37445) return '${persona.videoCardVendor}';
-                        if (param === 37446) return '${persona.videoCardRenderer}';
-                        return target.call(this, param);
-                    };
-                };
+
+                // ===== PHASE 4: WEBGL PARAMETRIC SPOOFING =====
                 try {
-                    const canvas = document.createElement('canvas');
-                    const gl = canvas.getContext('webgl');
-                    if (gl) {
-                        WebGLRenderingContext.prototype.getParameter = getParameterProxy(gl.getParameter);
-                    }
-                    const gl2 = canvas.getContext('webgl2');
-                    if (gl2) {
-                        WebGL2RenderingContext.prototype.getParameter = getParameterProxy(gl2.getParameter);
-                    }
+                    const webglTargets = [WebGLRenderingContext, WebGL2RenderingContext];
+                    const webglLimits = {
+                        37445: '${persona.videoCardVendor}', // UNMASKED_VENDOR_WEBGL
+                        37446: '${persona.videoCardRenderer}', // UNMASKED_RENDERER_WEBGL
+                        3379: ${persona.webglMaxTextureSize}, // MAX_TEXTURE_SIZE
+                        3413: ${persona.webglMaxRenderBufferSize}, // MAX_RENDERBUFFER_SIZE
+                        34076: ${persona.webglMaxTextureSize}, // MAX_CUBE_MAP_TEXTURE_SIZE
+                    };
+                    const extensions = ${persona.webglExtensions.joinToString(",", "[", "]") { "'$it'" }};
+
+                    webglTargets.forEach(t => {
+                        if (!t) return;
+                        const originalGetParameter = t.prototype.getParameter;
+                        t.prototype.getParameter = makeNative(function(param) {
+                            if (webglLimits[param] !== undefined) return webglLimits[param];
+                            return originalGetParameter.apply(this, arguments);
+                        }, 'getParameter');
+                        
+                        const originalGetSupportedExtensions = t.prototype.getSupportedExtensions;
+                        t.prototype.getSupportedExtensions = makeNative(function() {
+                            return extensions;
+                        }, 'getSupportedExtensions');
+                    });
+                } catch(e) {}
+
+                // ===== PHASE 4: CANVAS & FONT NOISE (Advanced) =====
+                try {
+                    const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+                    CanvasRenderingContext2D.prototype.getImageData = makeNative(function(x, y, w, h) {
+                        const imageData = originalGetImageData.apply(this, arguments);
+                        const buffer = imageData.data;
+                        // Add extremely subtle entropy (1 bit flip per 400 pixels)
+                        for (let i = 0; i < buffer.length; i += 400) {
+                            buffer[i] = buffer[i] ^ (NOISE_SEED & 1);
+                        }
+                        return imageData;
+                    }, 'getImageData');
+                    
+                    // Subtle Font Measurement Jitter
+                    const originalMeasureText = CanvasRenderingContext2D.prototype.measureText;
+                    CanvasRenderingContext2D.prototype.measureText = makeNative(function(text) {
+                        const metrics = originalMeasureText.apply(this, arguments);
+                        // We can't easily modify the TextMetrics object as it's often read-only
+                        // But we can return a proxy or just leave it for now.
+                        // Better: Font fingerprinting is usually done via height/width of spans.
+                        return metrics;
+                    }, 'measureText');
                 } catch(e) {}
                 
-                // ===== CANVAS NOISE (SEEDED) =====
-                // Use a seeded approach so the noise is consistent for this persona ID
-                const seed = ${persona.noiseSeed};
-                const noise = (val, idx) => {
-                     // Simple pseudo-random using seed
-                     const r = Math.sin(seed + idx) * 10000;
-                     return (r - Math.floor(r)) * 0.01; // tiny offset
-                };
-                
-                const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-                HTMLCanvasElement.prototype.toDataURL = function(type) {
-                    // Only apply noise if context was drawn to? 
-                    // This is complex, simple approach:
-                    return originalToDataURL.apply(this, arguments);
-                };
-                // Note: True seeded canvas noise is complex. For now, we rely on WebGL spoofing + UA consistency.
-                
+                // ===== AUDIO NOISE =====
+                try {
+                    const originalGetChannelData = AudioBuffer.prototype.getChannelData;
+                    AudioBuffer.prototype.getChannelData = makeNative(function(channel) {
+                        const results = originalGetChannelData.apply(this, arguments);
+                        const noise = rnd(NOISE_SEED + channel) * 0.00000001; 
+                        for (let i = 0; i < results.length; i+=200) {
+                             results[i] += noise;
+                        }
+                        return results;
+                    }, 'getChannelData');
+                } catch(e) {}
+
             })();
         """.trimIndent()
     }

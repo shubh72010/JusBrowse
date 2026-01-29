@@ -41,6 +41,31 @@ data class FakePersona(
     val locale: String,    // navigator.language (e.g., "en-US")
     val languages: List<String>, // navigator.languages
     val timezone: String,  // Intl.DateTimeFormat (e.g., "America/New_York")
+    val doNotTrack: String = "1", // navigator.doNotTrack
+    // Phase 3: Network & Timing
+    val clockSkewMs: Long = 0, // Offset for Date/Time
+    val networkType: String = "4g", // navigator.connection.effectiveType
+    val networkDownlink: Double = 10.0, // navigator.connection.downlink
+    val networkRtt: Int = 50, // navigator.connection.rtt
+
+    // Phase 4: Extreme Believability
+    val webglMaxTextureSize: Int = 8192,
+    val webglMaxRenderBufferSize: Int = 8192,
+    val webglExtensions: List<String> = listOf(
+        "EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "OES_standard_derivatives",
+        "WEBGL_debug_renderer_info", "WEBGL_lose_context"
+    ),
+    val mediaDeviceLabels: Map<String, String> = mapOf(
+        "audioinput" to "Internal Microphone",
+        "audiooutput" to "Speaker",
+        "videoinput_front" to "Front Camera",
+        "videoinput_back" to "Rear Camera"
+    ),
+
+    // Phase 5: Hardware-In-The-Loop Simulation
+    val webglParams: Map<Int, Any> = emptyMap(),
+    val audioBaseLatency: Double = 0.01, // 10ms typical for flagship
+    val fontJitterSeed: Long = 42L
 ) {
     // Helper properties for UI compatibility
     val deviceModel: String get() = model

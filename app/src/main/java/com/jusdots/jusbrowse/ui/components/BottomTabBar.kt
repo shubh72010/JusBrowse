@@ -27,6 +27,7 @@ fun BottomTabBar(
     onTabSelected: (Int) -> Unit,
     onTabClosed: (Int) -> Unit,
     onNewTab: () -> Unit,
+    showIcons: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -52,7 +53,8 @@ fun BottomTabBar(
                         tab = tab,
                         isActive = index == activeTabIndex,
                         onClick = { onTabSelected(index) },
-                        onClose = { onTabClosed(index) }
+                        onClose = { onTabClosed(index) },
+                        showIcon = showIcons
                     )
                 }
             }
@@ -78,6 +80,7 @@ private fun TabChip(
     isActive: Boolean,
     onClick: () -> Unit,
     onClose: () -> Unit,
+    showIcon: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -104,13 +107,42 @@ private fun TabChip(
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
-            Text(
-                text = tab.title,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 120.dp)
-            )
+            
+            if (showIcon) {
+                // Show circular icon with first letter of domain
+                val domain = try {
+                    val url = if (tab.url == "about:blank") "N" else tab.url
+                    val uri = android.net.Uri.parse(url)
+                    uri.host?.firstOrNull()?.uppercase() ?: "N"
+                } catch (e: Exception) {
+                    "N"
+                }
+                
+                Surface(
+                    modifier = Modifier.size(24.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = domain,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = tab.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 120.dp)
+                )
+            }
             
             IconButton(
                 onClick = onClose,

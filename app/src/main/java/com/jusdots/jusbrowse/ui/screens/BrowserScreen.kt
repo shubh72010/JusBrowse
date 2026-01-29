@@ -23,6 +23,7 @@ fun BrowserScreen(
     val tabs = viewModel.tabs
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
     val isMultiView by viewModel.isMultiViewMode.collectAsStateWithLifecycle()
+    val showTabIcons by viewModel.showTabIcons.collectAsStateWithLifecycle(initialValue = false)
 
     // Handle Back Press at high level
     androidx.activity.compose.BackHandler(enabled = true) {
@@ -80,7 +81,8 @@ fun BrowserScreen(
                     activeTabIndex = activeTabIndex,
                     onTabSelected = { index -> viewModel.switchTab(index) },
                     onTabClosed = { index -> viewModel.closeTab(index) },
-                    onNewTab = { viewModel.createNewTab() }
+                    onNewTab = { viewModel.createNewTab() },
+                    showIcons = showTabIcons
                 )
             }
         }

@@ -27,12 +27,20 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         
         setContent {
-            JusBrowse2Theme {
+            val viewModel: BrowserViewModel = viewModel()
+            val themePreset by viewModel.themePreset.collectAsStateWithLifecycle(initialValue = "SYSTEM")
+            val darkMode by viewModel.darkMode.collectAsStateWithLifecycle(initialValue = true) // defaulting to true or system?
+            // Note: darkMode is currently a preference. If we want to respect system, we might need a "SYSTEM" mode for dark mode too.
+            // For now, let's assume the preference dictates it.
+
+            JusBrowse2Theme(
+                darkTheme = darkMode,
+                themePreset = themePreset
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val viewModel: BrowserViewModel = viewModel()
                     val flagSecureEnabled by viewModel.flagSecureEnabled.collectAsStateWithLifecycle(initialValue = true)
 
                     LaunchedEffect(flagSecureEnabled) {

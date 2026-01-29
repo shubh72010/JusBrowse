@@ -38,6 +38,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.CookieManager
+import android.view.DragEvent
+import android.content.ClipData
+import android.content.ClipDescription
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.mimeTypes
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
+import androidx.compose.ui.layout.onSizeChanged
 import java.io.ByteArrayInputStream
 import com.jusdots.jusbrowse.data.models.BrowserTab
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
@@ -95,6 +104,11 @@ fun TabWindow(
     var pendingDownloadInfo by remember { mutableStateOf<DownloadValidator.DownloadValidationResult?>(null) }
     var pendingDownloadUrl by remember { mutableStateOf("") }
 
+    // Drag and Drop State
+    var isDragging by remember { mutableStateOf(false) }
+    var isHoveringDropZone by remember { mutableStateOf(false) }
+    var boxSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+
     // Sync back to ViewModel occasionally or on end
     LaunchedEffect(offsetX, offsetY) {
         viewModel.updateWindowPosition(tab.id, offsetX, offsetY)
@@ -125,7 +139,8 @@ fun TabWindow(
     if (showDownloadWarning && pendingDownloadInfo != null) {
         DownloadWarningDialog(
             fileName = pendingDownloadInfo!!.fileName,
-            warningMessage = pendingDownloadInfo!!.warningMessage ?: "",
+            warningMessage = pendingDownloadInfo!!.warningMessage 
+                ?: "Download ${pendingDownloadInfo!!.fileName}?",
             isBlocked = !pendingDownloadInfo!!.isAllowed,
             onConfirm = {
                 // Proceed with download
@@ -378,7 +393,69 @@ fun TabWindow(
             }
             
             // WebView Content
-            Box(modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .dragAndDropTarget(
+                        shouldStartDragAndDrop = { event ->
+                            event.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN)
+                        },
+                        target = object : DragAndDropTarget {
+                            override fun onStarted(event: DragAndDropEvent) {
+                                isDragging = true
+                            }
+                            
+                            override fun onEnded(event: DragAndDropEvent) {
+                                isDragging = false
+                                isHoveringDropZone = false
+                            }
+
+                            override fun onDrop(event: DragAndDropEvent): Boolean {
+                                // Check if dropped in top-right corner (handled by overlay check logically or here)
+                                // Since we have an overlay, we'll let the overlay visual guide the user,
+                                // but the drop logic can be here or specialized.
+                                
+                                // Actually, let's detect if it was dropped on the TopRight area.
+                                // For now, if we are hovering (tracked via moved), we accept.
+                                if (isHoveringDropZone) {
+                                    val data = event.toAndroidDragEvent().clipData
+                                    if (data != null && data.itemCount > 0) {
+                                        val url = data.getItemAt(0).text.toString()
+                                        if (url.startsWith("http")) {
+                                             viewModel.addDownload(
+                                                fileName = android.webkit.URLUtil.guessFileName(url, null, null),
+                                                url = url,
+                                                filePath = Environment.DIRECTORY_DOWNLOADS + "/" + android.webkit.URLUtil.guessFileName(url, null, null),
+                                                fileSize = 0 // Unknown
+                                            )
+                                            android.widget.Toast.makeText(context, "Download started", android.widget.Toast.LENGTH_SHORT).show()
+                                            return true
+                                        }
+                                    }
+                                }
+                                return false
+                            }
+
+                            override fun onMoved(event: DragAndDropEvent) {
+                                val x = event.toAndroidDragEvent().x
+                                val y = event.toAndroidDragEvent().y
+                                
+                                // Overlay is top-right 125dp approx
+                                // Check if x > width - 150dp and y < 150dp (roughly)
+                                val density = context.resources.displayMetrics.density
+                                val threshold = 150 * density
+                                
+                                if (boxSize.width > 0) {
+                                    val inRegion = x > (boxSize.width - threshold) && y < threshold
+                                    if (isHoveringDropZone != inRegion) {
+                                        isHoveringDropZone = inRegion
+                                    }
+                                }
+                            }
+                        }
+                    )
+                    .onSizeChanged { boxSize = it }
+            ) {
                  if (tab.url != "about:blank") {
                      AndroidView(
                          factory = { ctx ->
@@ -398,17 +475,38 @@ fun TabWindow(
                                              WebView.HitTestResult.IMAGE_TYPE -> {
                                                  val url = hitTestResult.extra
                                                  if (url != null) {
-                                                     val type = when(hitTestResult.type) {
-                                                         WebView.HitTestResult.IMAGE_TYPE -> ContextMenuType.IMAGE
-                                                         WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> ContextMenuType.IMAGE_LINK
-                                                         else -> ContextMenuType.LINK
+                                                     // Start Drag and Drop
+                                                     val clipData = ClipData.newPlainText("url", url)
+                                                     val shadowBuilder = android.view.View.DragShadowBuilder(view)
+                                                     
+                                                     // We need to allow local state updates to show overlay
+                                                     isDragging = true
+                                                     
+                                                     try {
+                                                         // Start standard Drag and Drop
+                                                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                                                             view.startDragAndDrop(clipData, shadowBuilder, null, android.view.View.DRAG_FLAG_GLOBAL)
+                                                         } else {
+                                                             view.startDrag(clipData, shadowBuilder, null, 0)
+                                                         }
+                                                     } catch (e: Exception) {
+                                                         // Fallback to context menu if drag fails
+                                                         isDragging = false
+                                                         android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                                                 val type = when(hitTestResult.type) {
+                                                                     WebView.HitTestResult.IMAGE_TYPE -> ContextMenuType.IMAGE
+                                                                     WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> ContextMenuType.IMAGE_LINK
+                                                                     else -> ContextMenuType.LINK
+                                                                 }
+                                                                 contextMenuData = ContextMenuData(
+                                                                     url = url,
+                                                                     type = type,
+                                                                     extra = if (type != ContextMenuType.LINK) url else null
+                                                                 )
+                                                                 showContextMenu = true
+                                                         }
                                                      }
-                                                     contextMenuData = ContextMenuData(
-                                                         url = url,
-                                                         type = type,
-                                                         extra = if (type != ContextMenuType.LINK) url else null
-                                                     )
-                                                     showContextMenu = true
+                                                     
                                                      true // Consume event
                                                  } else false
                                              }
@@ -491,23 +589,16 @@ fun TabWindow(
                                      // LAYER 9: Download Safety
                                      // ==============================
                                      setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
-                                         val validation = DownloadValidator.validateDownload(
-                                             url, userAgent, contentDisposition, mimeType, contentLength
-                                         )
-                                         
-                                         if (validation.requiresWarning || !validation.isAllowed) {
+                                         // Download listener runs on background thread, post to main thread
+                                         android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                             val validation = DownloadValidator.validateDownload(
+                                                 url, userAgent, contentDisposition, mimeType, contentLength
+                                             )
+                                             
+                                             // Always show download dialog for user confirmation
                                              pendingDownloadUrl = url
                                              pendingDownloadInfo = validation
                                              showDownloadWarning = true
-                                         } else {
-                                             // Safe download, proceed
-                                             startDownload(ctx, url, validation.fileName)
-                                             viewModel.addDownload(
-                                                 fileName = validation.fileName,
-                                                 url = url,
-                                                 filePath = Environment.DIRECTORY_DOWNLOADS + "/" + validation.fileName,
-                                                 fileSize = contentLength
-                                             )
                                          }
                                      }
                                      
@@ -633,6 +724,13 @@ fun TabWindow(
                  if (tab.isLoading) {
                      LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
                  }
+
+                 // Drag Drop Overlay
+                 DragDropOverlay(
+                     isDragging = isDragging,
+                     isHovering = isHoveringDropZone,
+                     modifier = Modifier.align(Alignment.TopEnd)
+                 )
             }
         }
         

@@ -223,19 +223,21 @@ fun DownloadWarningDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val isSafeDownload = warningMessage.startsWith("Download") && !isBlocked
+    
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
             Icon(
-                imageVector = if (isBlocked) Icons.Filled.Block else Icons.Filled.Warning,
+                imageVector = if (isBlocked) Icons.Filled.Block else if (isSafeDownload) Icons.Filled.Download else Icons.Filled.Warning,
                 contentDescription = null,
-                tint = if (isBlocked) Color(0xFFF44336) else Color(0xFFFF9800),
+                tint = if (isBlocked) Color(0xFFF44336) else if (isSafeDownload) MaterialTheme.colorScheme.primary else Color(0xFFFF9800),
                 modifier = Modifier.size(48.dp)
             )
         },
         title = {
             Text(
-                text = if (isBlocked) "Download Blocked" else "Download Warning"
+                text = if (isBlocked) "Download Blocked" else if (isSafeDownload) "Confirm Download" else "Download Warning"
             )
         },
         text = {
@@ -244,7 +246,7 @@ fun DownloadWarningDialog(
         confirmButton = {
             if (!isBlocked) {
                 TextButton(onClick = onConfirm) {
-                    Text("Download Anyway")
+                    Text(if (isSafeDownload) "Download" else "Download Anyway")
                 }
             }
         },
