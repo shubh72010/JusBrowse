@@ -30,6 +30,8 @@ class PreferencesRepository(private val context: Context) {
         val SAVED_SHORTCUTS = stringPreferencesKey("saved_shortcuts")
         val SHOW_TAB_ICONS = booleanPreferencesKey("show_tab_icons")
         val THEME_PRESET = stringPreferencesKey("theme_preset")
+        val VIRUSTOTAL_API_KEY = stringPreferencesKey("virustotal_api_key")
+        val KOODOUS_API_KEY = stringPreferencesKey("koodous_api_key")
     }
 
     val searchEngine: Flow<String> = context.dataStore.data.map { preferences ->
@@ -86,6 +88,14 @@ class PreferencesRepository(private val context: Context) {
 
     val themePreset: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[PreferenceKeys.THEME_PRESET] ?: "SYSTEM"
+    }
+
+    val virusTotalApiKey: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.VIRUSTOTAL_API_KEY] ?: ""
+    }
+
+    val koodousApiKey: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.KOODOUS_API_KEY] ?: ""
     }
 
     suspend fun setSearchEngine(searchEngine: String) {
@@ -169,6 +179,18 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setThemePreset(preset: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.THEME_PRESET] = preset
+        }
+    }
+
+    suspend fun setVirusTotalApiKey(key: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.VIRUSTOTAL_API_KEY] = key
+        }
+    }
+
+    suspend fun setKoodousApiKey(key: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.KOODOUS_API_KEY] = key
         }
     }
 }

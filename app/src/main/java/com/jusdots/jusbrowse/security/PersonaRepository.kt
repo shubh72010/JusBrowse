@@ -56,9 +56,12 @@ object PersonaRepository {
         webglParams = mapOf(
             36347 to 1024, // MAX_VERTEX_UNIFORM_VECTORS
             36348 to 1024, // MAX_FRAGMENT_UNIFORM_VECTORS
-            36349 to 32,   // MAX_VARYING_VECTORS
+            36349 to 31,   // MAX_VARYING_VECTORS
             35660 to 16,   // MAX_VERTEX_ATTRIBS
-            35661 to 80    // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+            35661 to 80,   // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+            33902 to listOf(1, 1024), // ALIASED_LINE_WIDTH_RANGE
+            33901 to listOf(1, 1024), // ALIASED_POINT_SIZE_RANGE
+            34930 to 16    // MAX_SAMPLES
         ),
         audioBaseLatency = 0.012,
         fontJitterSeed = 101L
@@ -113,7 +116,10 @@ object PersonaRepository {
             36348 to 4096, // MAX_FRAGMENT_UNIFORM_VECTORS
             36349 to 32,   // MAX_VARYING_VECTORS
             35660 to 16,   // MAX_VERTEX_ATTRIBS
-            35661 to 128   // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+            35661 to 128,  // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+            33902 to listOf(1, 1), // Adreno typical
+            33901 to listOf(1, 1024),
+            34930 to 8
         ),
         audioBaseLatency = 0.008,
         fontJitterSeed = 202L
@@ -167,7 +173,10 @@ object PersonaRepository {
             36348 to 4096, // MAX_FRAGMENT_UNIFORM_VECTORS
             36349 to 32,   // MAX_VARYING_VECTORS
             35660 to 16,   // MAX_VERTEX_ATTRIBS
-            35661 to 128   // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+            35661 to 128,  // MAX_COMBINED_TEXTURE_IMAGE_UNITS
+            33902 to listOf(1, 1),
+            33901 to listOf(1, 1024),
+            34930 to 8
         ),
         audioBaseLatency = 0.009,
         fontJitterSeed = 303L

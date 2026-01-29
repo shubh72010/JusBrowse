@@ -12,5 +12,7 @@ data class DownloadItem(
     val filePath: String,
     val fileSize: Long,
     val timestamp: Long = System.currentTimeMillis(),
-    val status: String = "Completed" // Simplified for now: Downloading, Completed, Failed
+    val status: String = "Completed", // Downloading, Completed, Failed
+    val securityStatus: String = "Not Scanned", // Not Scanned, Scanning, Clean, Malicious, Error
+    val scanResult: String? = null // Detailed message or hash
 )

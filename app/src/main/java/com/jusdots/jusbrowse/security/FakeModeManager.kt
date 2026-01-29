@@ -216,24 +216,58 @@ object FakeModeManager {
                         return originalNow.call(this) + perfOffset;
                     }, 'now');
                     
-                    const originalDate = Date;
-                    const originalDateNow = Date.now;
+                    const originalDate = window.Date;
+                    const originalDateNow = originalDate.now;
+                    const clockSkew = CLOCK_SKEW_MS;
                     
-                    Date.now = makeNative(function() {
-                        return originalDateNow() + CLOCK_SKEW_MS;
+                    const mockedNow = makeNative(function() {
+                        return originalDateNow.call(originalDate) + clockSkew;
                     }, 'now');
                     
-                    window.Date = makeNative(function(...args) {
-                        if (args.length === 0) {
-                            return new originalDate(originalDateNow() + CLOCK_SKEW_MS);
+                    const DateMock = makeNative(function(...args) {
+                        // Date() called as a function (without new) must return a string
+                        if (!(this instanceof DateMock)) {
+                            return new originalDate(originalDateNow.call(originalDate) + clockSkew).toString();
                         }
+                        // new Date()
+                        if (args.length === 0) {
+                            return new originalDate(originalDateNow.call(originalDate) + clockSkew);
+                        }
+                        // new Date(timestamp), new Date(year, month, ...), etc.
                         return new originalDate(...args);
                     }, 'Date');
                     
-                    window.Date.prototype = originalDate.prototype;
-                    window.Date.now = Date.now;
-                    window.Date.parse = makeNative(originalDate.parse, 'parse');
-                    window.Date.UTC = makeNative(originalDate.UTC, 'UTC');
+                    DateMock.prototype = originalDate.prototype;
+                    DateMock.now = mockedNow;
+                    DateMock.parse = makeNative(originalDate.parse, 'parse');
+                    DateMock.UTC = makeNative(originalDate.UTC, 'UTC');
+                    
+                    window.Date = DateMock;
+                } catch(e) {}
+
+                // ===== PHASE 5: HARDWARE-IN-THE-LOOP (Sensors) =====
+                try {
+                    // Simulate idle "breathing" motion for bot detection
+                    const baseOrientation = { alpha: rnd(NOISE_SEED)*360, beta: 5+rnd(NOISE_SEED+1)*5, gamma: rnd(NOISE_SEED+2)*5 };
+                    
+                    const originalAddEventListener = window.addEventListener;
+                    window.addEventListener = makeNative(function(type, listener, options) {
+                        if (type === 'deviceorientation') {
+                            const wrapped = makeNative(function(e) {
+                                const jitter = () => (rnd(NOISE_SEED + Date.now()/1000) * 0.2) - 0.1;
+                                const fakeEvent = {
+                                    alpha: baseOrientation.alpha + jitter(),
+                                    beta: baseOrientation.beta + jitter(),
+                                    gamma: baseOrientation.gamma + jitter(),
+                                    absolute: true,
+                                    bubbles: false, cancelable: false
+                                };
+                                listener.call(this, fakeEvent);
+                            }, 'onDeviceOrientation');
+                            return originalAddEventListener.call(this, type, wrapped, options);
+                        }
+                        return originalAddEventListener.apply(this, arguments);
+                    }, 'addEventListener');
                 } catch(e) {}
 
                 // ===== AUTOMATION & PRIVACY =====
@@ -241,7 +275,6 @@ object FakeModeManager {
                     Object.defineProperty(navigator, 'webdriver', { get: makeNative(() => false, 'get webdriver') });
                     Object.defineProperty(navigator, 'doNotTrack', { get: makeNative(() => '${persona.doNotTrack}', 'get doNotTrack') });
                 } catch(e) {}
-                
                 // ===== BATTERY API =====
                 try {
                     const batteryMock = {
@@ -260,6 +293,24 @@ object FakeModeManager {
                     
                     const p = Promise.resolve(batteryMock);
                     navigator.getBattery = makeNative(function() { return p; }, 'getBattery');
+                } catch(e) {}
+
+                // ===== NOTIFICATION API (Phase 5 Stabilization) =====
+                try {
+                    if (typeof window.Notification === 'undefined') {
+                        const NotificationMock = makeNative(function(title, options) {
+                            this.title = title;
+                            this.options = options || {};
+                            this.onclick = null;
+                            this.onshow = null;
+                            this.onerror = null;
+                            this.onclose = null;
+                            setTimeout(() => { if (this.onshow) this.onshow(); }, 100);
+                        }, 'Notification');
+                        NotificationMock.permission = 'granted';
+                        NotificationMock.requestPermission = makeNative(() => Promise.resolve('granted'), 'requestPermission');
+                        window.Notification = NotificationMock;
+                    }
                 } catch(e) {}
 
                 // ===== NETWORK INFO =====
@@ -404,9 +455,10 @@ object FakeModeManager {
                     }, 'toString');
                 } catch(e) {}
 
-                // ===== PHASE 4: WEBGL PARAMETRIC SPOOFING =====
+                // ===== WEBGL PARAMETRIC SPOOFING (Phase 5: Deep architectural constants) =====
                 try {
                     const webglTargets = [WebGLRenderingContext, WebGL2RenderingContext];
+                    const webglParams = { ${persona.webglParams.entries.joinToString(",") { "${it.key}: ${it.value}" }} };
                     const webglLimits = {
                         37445: '${persona.videoCardVendor}', // UNMASKED_VENDOR_WEBGL
                         37446: '${persona.videoCardRenderer}', // UNMASKED_RENDERER_WEBGL
@@ -414,14 +466,21 @@ object FakeModeManager {
                         3413: ${persona.webglMaxRenderBufferSize}, // MAX_RENDERBUFFER_SIZE
                         34076: ${persona.webglMaxTextureSize}, // MAX_CUBE_MAP_TEXTURE_SIZE
                     };
+                    const allParams = Object.assign({}, webglLimits, webglParams);
                     const extensions = ${persona.webglExtensions.joinToString(",", "[", "]") { "'$it'" }};
 
                     webglTargets.forEach(t => {
                         if (!t) return;
                         const originalGetParameter = t.prototype.getParameter;
                         t.prototype.getParameter = makeNative(function(param) {
-                            if (webglLimits[param] !== undefined) return webglLimits[param];
-                            return originalGetParameter.apply(this, arguments);
+                            if (allParams[param] !== undefined) return allParams[param];
+                            // Suppress errors for common architectural queries that might trigger INVALID_ENUM
+                            // Some sites probe for non-standard enums that trigger browser console noise
+                            if (param === 0 || param === undefined || param === null) return null;
+                            try {
+                                const res = originalGetParameter.apply(this, arguments);
+                                return res;
+                            } catch(e) { return null; }
                         }, 'getParameter');
                         
                         const originalGetSupportedExtensions = t.prototype.getSupportedExtensions;
@@ -431,7 +490,26 @@ object FakeModeManager {
                     });
                 } catch(e) {}
 
-                // ===== PHASE 4: CANVAS & FONT NOISE (Advanced) =====
+                // ===== PHASE 5: AUDIO LATENCY & NOISE =====
+                try {
+                    const originalGetChannelData = AudioBuffer.prototype.getChannelData;
+                    AudioBuffer.prototype.getChannelData = makeNative(function(channel) {
+                        const results = originalGetChannelData.apply(this, arguments);
+                        const noise = rnd(NOISE_SEED + channel) * 0.00000001; 
+                        for (let i = 0; i < results.length; i+=200) {
+                             results[i] += noise;
+                        }
+                        return results;
+                    }, 'getChannelData');
+                    
+                    // Hardware Latency Simulation
+                    if (window.AudioContext) {
+                        Object.defineProperty(AudioContext.prototype, 'baseLatency', { get: makeNative(() => ${persona.audioBaseLatency}, 'get baseLatency') });
+                        Object.defineProperty(AudioContext.prototype, 'outputLatency', { get: makeNative(() => ${persona.audioBaseLatency + 0.005}, 'get outputLatency') });
+                    }
+                } catch(e) {}
+
+                // ===== PHASE 5: CANVAS & FONT (Parametric Metrics) =====
                 try {
                     const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
                     CanvasRenderingContext2D.prototype.getImageData = makeNative(function(x, y, w, h) {
@@ -444,28 +522,20 @@ object FakeModeManager {
                         return imageData;
                     }, 'getImageData');
                     
-                    // Subtle Font Measurement Jitter
+                    // Font metrics jitter via span proxying is complex, but we can jitter measureText
                     const originalMeasureText = CanvasRenderingContext2D.prototype.measureText;
                     CanvasRenderingContext2D.prototype.measureText = makeNative(function(text) {
                         const metrics = originalMeasureText.apply(this, arguments);
-                        // We can't easily modify the TextMetrics object as it's often read-only
-                        // But we can return a proxy or just leave it for now.
-                        // Better: Font fingerprinting is usually done via height/width of spans.
-                        return metrics;
+                        const jitter = (rnd(NOISE_SEED + text.length) * 0.01) - 0.005;
+                        
+                        // We wrap metrics in a proxy to override read-only properties
+                        return new Proxy(metrics, {
+                            get: (target, prop) => {
+                                if (prop === 'width') return target.width + jitter;
+                                return target[prop];
+                            }
+                        });
                     }, 'measureText');
-                } catch(e) {}
-                
-                // ===== AUDIO NOISE =====
-                try {
-                    const originalGetChannelData = AudioBuffer.prototype.getChannelData;
-                    AudioBuffer.prototype.getChannelData = makeNative(function(channel) {
-                        const results = originalGetChannelData.apply(this, arguments);
-                        const noise = rnd(NOISE_SEED + channel) * 0.00000001; 
-                        for (let i = 0; i < results.length; i+=200) {
-                             results[i] += noise;
-                        }
-                        return results;
-                    }, 'getChannelData');
                 } catch(e) {}
 
             })();

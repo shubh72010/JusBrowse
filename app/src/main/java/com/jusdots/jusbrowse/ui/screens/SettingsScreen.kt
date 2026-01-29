@@ -45,6 +45,8 @@ fun SettingsScreen(
     val doNotTrackEnabled by viewModel.doNotTrackEnabled.collectAsStateWithLifecycle(initialValue = false)
     val cookieBlockerEnabled by viewModel.cookieBlockerEnabled.collectAsStateWithLifecycle(initialValue = false)
     val showTabIcons by viewModel.showTabIcons.collectAsStateWithLifecycle(initialValue = false)
+    val vtApiKey by viewModel.virusTotalApiKey.collectAsStateWithLifecycle(initialValue = "")
+    val koodousApiKey by viewModel.koodousApiKey.collectAsStateWithLifecycle(initialValue = "")
     
     // Fake Mode state
     val fakeModeEnabled by FakeModeManager.isEnabled.collectAsStateWithLifecycle()
@@ -314,6 +316,41 @@ fun SettingsScreen(
                 subtitle = "Display website favicons instead of titles in tab bar",
                 checked = showTabIcons,
                 onCheckedChange = { viewModel.setShowTabIcons(it) }
+            )
+
+            HorizontalDivider()
+
+            // Security API Keys
+            Text(
+                text = "Security API Keys (BYOK)",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            Text(
+                text = "Bring Your Own Key for zero-day malware protection. Your keys are stored only on this device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+                value = vtApiKey,
+                onValueChange = { viewModel.setVirusTotalApiKey(it) },
+                label = { Text("VirusTotal API Key") },
+                placeholder = { Text("Enter your VT key") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+            )
+
+            OutlinedTextField(
+                value = koodousApiKey,
+                onValueChange = { viewModel.setKoodousApiKey(it) },
+                label = { Text("Koodous API Key") },
+                placeholder = { Text("Enter your Koodous key") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
             )
         }
     }

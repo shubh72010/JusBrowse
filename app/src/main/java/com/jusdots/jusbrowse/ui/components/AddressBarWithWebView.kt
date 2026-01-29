@@ -55,6 +55,12 @@ fun AddressBarWithWebView(
     
     val focusManager = LocalFocusManager.current
     var isDragging by remember { mutableStateOf(false) }
+
+    // Download warning dialog state
+    var showDownloadWarning by remember { mutableStateOf(false) }
+    var pendingDownloadInfo by remember { mutableStateOf<com.jusdots.jusbrowse.security.DownloadValidator.DownloadValidationResult?>(null) }
+    var pendingDownloadUrl by remember { mutableStateOf("") }
+    val context = LocalContext.current
     
     Box(modifier = modifier) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -75,9 +81,21 @@ fun AddressBarWithWebView(
                 Icon(
                     imageVector = Icons.Default.VpnKey,
                     contentDescription = "Private",
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(16.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
+            } else {
+                IconButton(
+                    onClick = { /* Could show security details */ },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = if (tab?.url?.startsWith("https") == true) Icons.Default.Lock else Icons.Default.LockOpen,
+                        contentDescription = "Security",
+                        modifier = Modifier.size(16.dp),
+                        tint = if (tab?.url?.startsWith("https") == true)  MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                }
             }
             // Text Field
             BasicTextField(
@@ -115,6 +133,19 @@ fun AddressBarWithWebView(
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
             )
+
+            if (urlText.isNotEmpty()) {
+                IconButton(
+                    onClick = { urlText = "" },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Clear,
+                        contentDescription = "Clear",
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
             
             IconButton(
                 onClick = {
@@ -140,9 +171,10 @@ fun AddressBarWithWebView(
         
         // WebView
         if (tab != null && tab.url != "about:blank") {
-             // Use AndroidView to bind to the specific WebSocket from pool
-             AndroidView(
-                 factory = { ctx ->
+             // Use AndroidView to bind to the specific WebView from pool
+             key(tab.id) {
+                 AndroidView(
+                     factory = { ctx ->
                      // Check pool first, if null create new
                      val existing = viewModel.getWebView(tab.id)
                      if (existing != null) {
@@ -152,6 +184,17 @@ fun AddressBarWithWebView(
                          WebView(ctx).apply {
                              settings.javaScriptEnabled = true
                              settings.domStorageEnabled = true
+                             
+                             setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+                                 // Post to main thread to show dialog
+                                 val validation = com.jusdots.jusbrowse.security.DownloadValidator.validateDownload(
+                                     url, userAgent, contentDisposition, mimeType, contentLength
+                                 )
+                                 
+                                 pendingDownloadUrl = url
+                                 pendingDownloadInfo = validation
+                                 showDownloadWarning = true
+                             }
                              
                              // Security Hardening
                              settings.safeBrowsingEnabled = true
@@ -270,6 +313,7 @@ fun AddressBarWithWebView(
                  },
                  modifier = Modifier.fillMaxSize()
              )
+            }
         } else {
             // New Tab Page
             Box(
@@ -361,6 +405,32 @@ fun AddressBarWithWebView(
                     modifier = Modifier.fillMaxSize()
                 )
             }
+        }
+        
+        // Download Warning Dialog
+        if (showDownloadWarning && pendingDownloadInfo != null) {
+            AlertDialog(
+                onDismissRequest = { showDownloadWarning = false },
+                title = { Text("Download Security") },
+                text = { Text(pendingDownloadInfo!!.warningMessage ?: "Do you want to download ${pendingDownloadInfo!!.fileName}?") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (pendingDownloadInfo!!.isAllowed) {
+                                viewModel.startDownload(context, pendingDownloadUrl, pendingDownloadInfo!!.fileName)
+                            }
+                            showDownloadWarning = false
+                        }
+                    ) {
+                        Text("Download")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDownloadWarning = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }

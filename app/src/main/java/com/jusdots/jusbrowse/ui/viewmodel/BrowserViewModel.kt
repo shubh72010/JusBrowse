@@ -85,6 +85,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val cookieBlockerEnabled = preferencesRepository.cookieBlockerEnabled
     val showTabIcons = preferencesRepository.showTabIcons
     val themePreset = preferencesRepository.themePreset
+    val virusTotalApiKey = preferencesRepository.virusTotalApiKey
+    val koodousApiKey = preferencesRepository.koodousApiKey
 
     // Multi-View Mode
     private val _isMultiViewMode = MutableStateFlow(false)
@@ -386,28 +388,31 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun isUrlQuery(input: String): Boolean {
-        // Robust heuristic for URL vs Search
         val trimmed = input.trim()
-        
-        // If it starts with schema, it's definitely a URL
-        if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("file://")) {
-            return false // It operates as a URL, not a query
-        }
+        if (trimmed.isEmpty()) return true
 
-        // If it contains spaces, it's definitely a search
-        if (trimmed.contains(" ")) {
-            return true
-        }
-
-        // Regex for simple domain check (e.g. google.com, localhost:8080)
-        val domainRegex = "^([a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}(:[0-9]+)?(/.*)?$".toRegex()
-        
-        // If it looks like a domain, treat as URL
-        if (domainRegex.matches(trimmed)) {
+        // 1. Explicit protocol
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || 
+            trimmed.startsWith("file://") || trimmed.startsWith("about:")) {
             return false
         }
-        
-        // Otherwise treat as search query (e.g. "android", "test")
+
+        // 2. Contains spaces -> definitely search
+        if (trimmed.contains(" ")) return true
+
+        // 3. Common TLDs check or localhost
+        val commonTlds = listOf(".com", ".net", ".org", ".io", ".gov", ".edu", ".dev", ".me", ".info", ".biz", ".top")
+        if (commonTlds.any { trimmed.lowercase().endsWith(it) } || 
+            trimmed.lowercase() == "localhost" || 
+            trimmed.contains("localhost:")) {
+            return false
+        }
+
+        // 4. IP Address check (simple)
+        val ipRegex = "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(:\\d+)?.*$".toRegex()
+        if (ipRegex.matches(trimmed)) return false
+
+        // Default: Search Query
         return true
     }
 
@@ -517,6 +522,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setVirusTotalApiKey(key: String) {
+        viewModelScope.launch {
+            preferencesRepository.setVirusTotalApiKey(key)
+        }
+    }
+
+    fun setKoodousApiKey(key: String) {
+        viewModelScope.launch {
+            preferencesRepository.setKoodousApiKey(key)
+        }
+    }
+
     // Site Settings
     fun updateSiteSettings(settings: com.jusdots.jusbrowse.data.models.SiteSettings) {
         viewModelScope.launch {
@@ -567,10 +584,47 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     fileName = fileName,
                     url = url,
                     filePath = filePath,
-                    fileSize = fileSize
+                    fileSize = fileSize,
+                    securityStatus = "Pending Scan"
                 )
             )
-                }
+        }
+    }
+
+    fun startDownload(context: android.content.Context, url: String, fileName: String) {
+        try {
+            val uri = android.net.Uri.parse(url)
+            val request = android.app.DownloadManager.Request(uri)
+                .setTitle(fileName)
+                .setDescription("Downloading via JusBrowse...")
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(false)
+
+            val downloadManager = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+            downloadManager.enqueue(request)
+
+            // Add to database
+            val fullPath = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS).absolutePath + "/" + fileName
+            addDownload(fileName, url, fullPath, 0L)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "Download failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun updateDownloadSecurity(fileName: String, status: String, result: String) {
+        viewModelScope.launch {
+            // This is a simple implementation: find by filename and update
+            // Ideally we'd have a downloadId from DownloadManager
+            val allDownloads = downloadRepository.allDownloads.first()
+            val item = allDownloads.find { it.fileName == fileName }
+            if (item != null) {
+                downloadRepository.addDownload(
+                    item.copy(securityStatus = status, scanResult = result)
+                )
+            }
+        }
     }
 
     // Shortcuts Management

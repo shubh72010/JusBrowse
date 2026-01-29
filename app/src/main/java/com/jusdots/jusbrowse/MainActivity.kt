@@ -16,22 +16,41 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jusdots.jusbrowse.ui.screens.BrowserScreen
 import com.jusdots.jusbrowse.ui.theme.JusBrowse2Theme
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
+import com.jusdots.jusbrowse.security.DownloadReceiver
+import com.jusdots.jusbrowse.data.repository.DownloadRepository
+import com.jusdots.jusbrowse.data.repository.PreferencesRepository
+import android.content.IntentFilter
+import android.app.DownloadManager
 
 class MainActivity : ComponentActivity() {
+    private lateinit var downloadReceiver: DownloadReceiver
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         // Ensure FakeModeManager state is loaded
         com.jusdots.jusbrowse.security.FakeModeManager.init(this)
         
+        // Initialize Download Security Receiver
+        val database = BrowserApplication.database
+        val downloadRepository = DownloadRepository(database.downloadDao())
+        val preferencesRepository = PreferencesRepository(application)
+        downloadReceiver = DownloadReceiver(downloadRepository, preferencesRepository)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                downloadReceiver,
+                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                android.content.Context.RECEIVER_EXPORTED
+            )
+        } else {
+            registerReceiver(downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+        }
+        
         enableEdgeToEdge()
         
         setContent {
             val viewModel: BrowserViewModel = viewModel()
             val themePreset by viewModel.themePreset.collectAsStateWithLifecycle(initialValue = "SYSTEM")
-            val darkMode by viewModel.darkMode.collectAsStateWithLifecycle(initialValue = true) // defaulting to true or system?
-            // Note: darkMode is currently a preference. If we want to respect system, we might need a "SYSTEM" mode for dark mode too.
-            // For now, let's assume the preference dictates it.
+            val darkMode by viewModel.darkMode.collectAsStateWithLifecycle(initialValue = true)
 
             JusBrowse2Theme(
                 darkTheme = darkMode,
@@ -54,6 +73,13 @@ class MainActivity : ComponentActivity() {
                     BrowserScreen(viewModel = viewModel)
                 }
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::downloadReceiver.isInitialized) {
+            unregisterReceiver(downloadReceiver)
         }
     }
 }
