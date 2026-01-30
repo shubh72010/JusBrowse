@@ -31,7 +31,7 @@ class ContentBlocker(context: Context) {
         }
     }
 
-    fun shouldBlock(url: String): Boolean {
+    suspend fun shouldBlock(url: String): Boolean {
         val uri = try {
             Uri.parse(url)
         } catch (e: Exception) {
@@ -40,17 +40,27 @@ class ContentBlocker(context: Context) {
         
         val host = uri.host?.lowercase() ?: return false
         
-        // Check exact match
+        // 1. Check direct host/domain matches
+        if (isDomainBlocked(host)) return true
+        
+        // 2. CNAME Uncloaking: Check if the underlying domain is blocked
+        val cnameTarget = DnsResolver.resolveCname(host)
+        if (cnameTarget != null && isDomainBlocked(cnameTarget)) {
+            return true
+        }
+        
+        return false
+    }
+
+    private fun isDomainBlocked(host: String): Boolean {
         if (blockedDomains.contains(host)) return true
         
-        // Check parent domains (e.g., if doubleclick.net is blocked, ads.doubleclick.net should also be blocked)
         var parts = host.split(".")
         while (parts.size >= 2) {
             val parentDomain = parts.joinToString(".")
             if (blockedDomains.contains(parentDomain)) return true
             parts = parts.drop(1)
         }
-        
         return false
     }
 }

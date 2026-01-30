@@ -5,6 +5,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -113,6 +116,28 @@ fun BrowserToolBar(
                             },
                             leadingIcon = { Icon(Icons.Default.Close, null) }
                         )
+                        Divider()
+                        // Container Submenu
+                        var showContainerSubMenu by remember { mutableStateOf(false) }
+                        DropdownMenuItem(
+                            text = { Text("New container tab") },
+                            onClick = { showContainerSubMenu = !showContainerSubMenu },
+                            leadingIcon = { Icon(Icons.Filled.Layers, null) },
+                            trailingIcon = { Icon(if (showContainerSubMenu) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown, null) }
+                        )
+                        if (showContainerSubMenu) {
+                            com.jusdots.jusbrowse.security.ContainerManager.AVAILABLE_CONTAINERS.filter { it != "default" }.forEach { container ->
+                                DropdownMenuItem(
+                                    text = { Text(com.jusdots.jusbrowse.security.ContainerManager.getContainerName(container)) },
+                                    onClick = {
+                                        viewModel.createNewTab(containerId = container)
+                                        showMenu = false
+                                        showContainerSubMenu = false
+                                    },
+                                    modifier = Modifier.padding(start = 16.dp)
+                                )
+                            }
+                        }
                         Divider()
                         DropdownMenuItem(
                             text = { Text("Settings") },

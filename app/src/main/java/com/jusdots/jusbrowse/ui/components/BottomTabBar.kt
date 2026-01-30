@@ -7,11 +7,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,10 +26,11 @@ fun BottomTabBar(
     activeTabIndex: Int,
     onTabSelected: (Int) -> Unit,
     onTabClosed: (Int) -> Unit,
-    onNewTab: () -> Unit,
+    onNewTab: (String) -> Unit,
     showIcons: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    var showContainerMenu by remember { mutableStateOf(false) }
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
@@ -59,16 +60,51 @@ fun BottomTabBar(
                 }
             }
             
-            // New Tab Button
-            IconButton(
-                onClick = onNewTab,
-                modifier = Modifier.padding(start = 8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "New Tab",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            // New Tab Button with Container support
+            Box {
+                IconButton(
+                    onClick = { onNewTab("default") },
+                    modifier = Modifier.padding(start = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "New Tab",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                
+                // Long-press or separate icon for containers
+                IconButton(
+                    onClick = { showContainerMenu = true },
+                    modifier = Modifier.size(16.dp).align(Alignment.BottomEnd)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowDropDown,
+                        contentDescription = "Containers",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showContainerMenu,
+                    onDismissRequest = { showContainerMenu = false }
+                ) {
+                    com.jusdots.jusbrowse.security.ContainerManager.AVAILABLE_CONTAINERS.forEach { container ->
+                        DropdownMenuItem(
+                            text = { Text(com.jusdots.jusbrowse.security.ContainerManager.getContainerName(container)) },
+                            onClick = {
+                                onNewTab(container)
+                                showContainerMenu = false
+                            },
+                             leadingIcon = {
+                                Icon(
+                                    imageVector = if (container == "default") Icons.Filled.Public else Icons.Filled.Layers,
+                                    contentDescription = null
+                                )
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -106,6 +142,21 @@ private fun TabChip(
                     modifier = Modifier.size(16.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
+            }
+            
+            val currentContainerId = tab.containerId ?: "default"
+            if (currentContainerId != "default") {
+                Surface(
+                    color = when(currentContainerId) {
+                        "work" -> Color(0xFF4285F4)
+                        "personal" -> Color(0xFF34A853)
+                        "banking" -> Color(0xFFFBBC05)
+                        "sandbox" -> Color(0xFFEA4335)
+                        else -> MaterialTheme.colorScheme.secondary
+                    },
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.size(8.dp)
+                ) {}
             }
             
             if (showIcon) {

@@ -37,6 +37,7 @@ import android.view.View
 import android.widget.FrameLayout
 import android.os.Build
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.runBlocking
 
 @Composable
 fun AddressBarWithWebView(
@@ -182,6 +183,9 @@ fun AddressBarWithWebView(
                          existing
                      } else {
                          WebView(ctx).apply {
+                             // State Partitioning: Apply isolated profile
+                             com.jusdots.jusbrowse.security.ContainerManager.applyContainer(this, tab.containerId ?: "default")
+                             
                              settings.javaScriptEnabled = true
                              settings.domStorageEnabled = true
                              
@@ -236,9 +240,9 @@ fun AddressBarWithWebView(
                                      val url = request?.url?.toString() ?: return null
                                      
                                      // 1. Ad Blocking
-                                     if (adBlockEnabled && viewModel.contentBlocker.shouldBlock(url)) {
-                                         return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
-                                     }
+                                      if (adBlockEnabled && runBlocking { viewModel.contentBlocker.shouldBlock(url) }) {
+                                          return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
+                                      }
                                      
                                      return super.shouldInterceptRequest(view, request)
                                  }

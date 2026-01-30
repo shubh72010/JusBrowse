@@ -65,7 +65,11 @@ data class FakePersona(
     // Phase 5: Hardware-In-The-Loop Simulation
     val webglParams: Map<Int, Any> = emptyMap(),
     val audioBaseLatency: Double = 0.01, // 10ms typical for flagship
-    val fontJitterSeed: Long = 42L
+    val fontJitterSeed: Long = 42L,
+
+    // Inner Profile Support
+    val groupId: String = "generic",
+    val isFlagship: Boolean = true
 ) {
     // Helper properties for UI compatibility
     val deviceModel: String get() = model

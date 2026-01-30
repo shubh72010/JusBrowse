@@ -6,30 +6,33 @@ package com.jusdots.jusbrowse.security
  */
 object PersonaRepository {
 
+    // --- GOOGLE GROUP ---
     private val PIXEL_8_PRO = FakePersona(
         id = "pixel_8_pro",
-        displayName = "Pixel 8 Pro",
+        groupId = "google",
+        isFlagship = true,
+        displayName = "Pixel 8 Pro (Flagship)",
         flagEmoji = "🇺🇸",
-        userAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        userAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
         brands = listOf(
             FakePersona.BrandVersion("Not_A Brand", "8"),
-            FakePersona.BrandVersion("Chromium", "120"),
-            FakePersona.BrandVersion("Google Chrome", "120")
+            FakePersona.BrandVersion("Chromium", "145"),
+            FakePersona.BrandVersion("Google Chrome", "145")
         ),
         platform = "Android",
         platformVersion = "14",
         model = "Pixel 8 Pro",
         mobile = true,
         headers = mapOf(
-            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"",
+            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"145\", \"Google Chrome\";v=\"145\"",
             "sec-ch-ua-mobile" to "?1",
             "sec-ch-ua-platform" to "\"Android\"",
             "Accept-Language" to "en-US,en;q=0.9",
         ),
-        screenWidth = 1344,
-        screenHeight = 2992,
+        screenWidth = 1236, // 412 * 3
+        screenHeight = 2745, // 915 * 3
         pixelRatio = 3.0,
-        cpuCores = 9, // Tensor G3
+        cpuCores = 8,
         ramGB = 12,
         videoCardRenderer = "Mali-G715",
         videoCardVendor = "Google",
@@ -47,146 +50,320 @@ object PersonaRepository {
             "EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "OES_standard_derivatives",
             "WEBGL_debug_renderer_info", "WEBGL_lose_context", "ANGLE_instanced_arrays"
         ),
-        mediaDeviceLabels = mapOf(
-            "audioinput" to "Internal Microphone",
-            "audiooutput" to "Phone Speaker",
-            "videoinput_front" to "camera2 1, facing front",
-            "videoinput_back" to "camera2 0, facing back"
-        ),
-        webglParams = mapOf(
-            36347 to 1024, // MAX_VERTEX_UNIFORM_VECTORS
-            36348 to 1024, // MAX_FRAGMENT_UNIFORM_VECTORS
-            36349 to 31,   // MAX_VARYING_VECTORS
-            35660 to 16,   // MAX_VERTEX_ATTRIBS
-            35661 to 80,   // MAX_COMBINED_TEXTURE_IMAGE_UNITS
-            33902 to listOf(1, 1024), // ALIASED_LINE_WIDTH_RANGE
-            33901 to listOf(1, 1024), // ALIASED_POINT_SIZE_RANGE
-            34930 to 16    // MAX_SAMPLES
-        ),
         audioBaseLatency = 0.012,
         fontJitterSeed = 101L
     )
 
-    private val GALAXY_S23_ULTRA = FakePersona(
-        id = "s23_ultra",
-        displayName = "Galaxy S23 Ultra",
-        flagEmoji = "🇰🇷",
-        userAgent = "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36",
+    private val PIXEL_7A = FakePersona(
+        id = "pixel_7a",
+        groupId = "google",
+        isFlagship = false,
+        displayName = "Pixel 7a (Budget)",
+        flagEmoji = "🇺🇸",
+        userAgent = "Mozilla/5.0 (Linux; Android 14; Pixel 7a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
         brands = listOf(
-            FakePersona.BrandVersion("Not?A_Brand", "24"),
-            FakePersona.BrandVersion("Chromium", "119"),
-            FakePersona.BrandVersion("Google Chrome", "119")
+            FakePersona.BrandVersion("Not_A Brand", "8"),
+            FakePersona.BrandVersion("Chromium", "145"),
+            FakePersona.BrandVersion("Google Chrome", "145")
         ),
         platform = "Android",
-        platformVersion = "13.0.0",
-        model = "SM-S918B",
+        platformVersion = "14",
+        model = "Pixel 7a",
         mobile = true,
         headers = mapOf(
+            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"145\", \"Google Chrome\";v=\"145\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
+            "Accept-Language" to "en-US,en;q=0.9",
+        ),
+        screenWidth = 1080,
+        screenHeight = 2400,
+        pixelRatio = 2.625, // Reports 411.4 -> 411
+        cpuCores = 8,
+        ramGB = 8,
+        videoCardRenderer = "Mali-G710",
+        videoCardVendor = "Google",
+        noiseSeed = 1002L,
+        locale = "en-US",
+        languages = listOf("en-US", "en"),
+        timezone = "America/Chicago",
+        clockSkewMs = -5,
+        networkType = "4g",
+        networkDownlink = 5.0,
+        networkRtt = 60,
+        webglMaxTextureSize = 4096,
+        webglMaxRenderBufferSize = 4096,
+        webglExtensions = listOf("EXT_blend_minmax", "EXT_sRGB", "OES_texture_float"),
+        audioBaseLatency = 0.018,
+        fontJitterSeed = 102L
+    )
+
+    // --- SAMSUNG GROUP ---
+    private val GALAXY_S24_ULTRA = FakePersona(
+        id = "s24_ultra",
+        groupId = "samsung",
+        isFlagship = true,
+        displayName = "Galaxy S24 Ultra (Flagship)",
+        flagEmoji = "🇰🇷",
+        userAgent = "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+        brands = listOf(
+            FakePersona.BrandVersion("Not_A Brand", "8"),
+            FakePersona.BrandVersion("Chromium", "145"),
+            FakePersona.BrandVersion("Google Chrome", "145")
+        ),
+        platform = "Android",
+        platformVersion = "14",
+        model = "SM-S928B",
+        mobile = true,
+        headers = mapOf(
+            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"145\", \"Google Chrome\";v=\"145\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
             "Accept-Language" to "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
         ),
         screenWidth = 1440,
-        screenHeight = 3088,
-        pixelRatio = 3.0, // High density
+        screenHeight = 3120,
+        pixelRatio = 3.5, // 411x891
         cpuCores = 8,
         ramGB = 12,
-        videoCardRenderer = "Adreno (TM) 740",
+        videoCardRenderer = "Adreno (TM) 750",
         videoCardVendor = "Qualcomm",
-        noiseSeed = 2002L,
+        noiseSeed = 2001L,
         locale = "ko-KR",
         languages = listOf("ko-KR", "ko", "en-US", "en"),
         timezone = "Asia/Seoul",
-        clockSkewMs = -24,
-        networkType = "4g",
-        networkDownlink = 10.0,
-        networkRtt = 40,
-        webglMaxTextureSize = 8192,
-        webglMaxRenderBufferSize = 8192,
-        webglExtensions = listOf(
-            "EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "OES_standard_derivatives",
-            "WEBGL_debug_renderer_info", "WEBGL_lose_context", "ANGLE_instanced_arrays"
-        ),
-        mediaDeviceLabels = mapOf(
-            "audioinput" to "Internal Microphone",
-            "audiooutput" to "Speaker",
-            "videoinput_front" to "camera2 1, facing front",
-            "videoinput_back" to "camera2 0, facing back"
-        ),
-        webglParams = mapOf(
-            36347 to 4096, // MAX_VERTEX_UNIFORM_VECTORS
-            36348 to 4096, // MAX_FRAGMENT_UNIFORM_VECTORS
-            36349 to 32,   // MAX_VARYING_VECTORS
-            35660 to 16,   // MAX_VERTEX_ATTRIBS
-            35661 to 128,  // MAX_COMBINED_TEXTURE_IMAGE_UNITS
-            33902 to listOf(1, 1), // Adreno typical
-            33901 to listOf(1, 1024),
-            34930 to 8
-        ),
-        audioBaseLatency = 0.008,
-        fontJitterSeed = 202L
+        clockSkewMs = 15,
+        networkType = "5g",
+        networkDownlink = 20.0,
+        networkRtt = 30,
+        webglMaxTextureSize = 16384,
+        webglMaxRenderBufferSize = 16384,
+        webglExtensions = listOf("EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "WEBGL_debug_renderer_info"),
+        audioBaseLatency = 0.006,
+        fontJitterSeed = 201L
     )
 
-    private val XIAOMI_13 = FakePersona(
-        id = "xiaomi_13_pro",
-        displayName = "Xiaomi 13 Pro",
-        flagEmoji = "🇨🇳",
-        userAgent = "Mozilla/5.0 (Linux; Android 13; 2210132C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Mobile Safari/537.36",
+    private val GALAXY_A54 = FakePersona(
+        id = "galaxy_a54",
+        groupId = "samsung",
+        isFlagship = false,
+        displayName = "Galaxy A54 (Budget)",
+        flagEmoji = "🇰🇷",
+        userAgent = "Mozilla/5.0 (Linux; Android 13; SM-A546B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
         brands = listOf(
-            FakePersona.BrandVersion("Chromium", "110"),
-            FakePersona.BrandVersion("Not=A?Brand", "99")
+            FakePersona.BrandVersion("Not_A Brand", "8"),
+            FakePersona.BrandVersion("Chromium", "145"),
+            FakePersona.BrandVersion("Google Chrome", "145")
         ),
         platform = "Android",
         platformVersion = "13",
-        model = "2210132C",
+        model = "SM-A546B",
         mobile = true,
         headers = mapOf(
-            "Accept-Language" to "zh-CN,zh;q=0.9",
+            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"145\", \"Google Chrome\";v=\"145\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
+            "Accept-Language" to "en-GB,en;q=0.9",
         ),
-        screenWidth = 1440,
-        screenHeight = 3200,
+        screenWidth = 1080,
+        screenHeight = 2400,
+        pixelRatio = 3.0, // 360x800 - EXTREMELY COMMON BUCKET
+        cpuCores = 8,
+        ramGB = 6,
+        videoCardRenderer = "Mali-G68",
+        videoCardVendor = "Samsung",
+        noiseSeed = 2002L,
+        locale = "en-GB",
+        languages = listOf("en-GB", "en"),
+        timezone = "Europe/London",
+        clockSkewMs = 3,
+        networkType = "4g",
+        networkDownlink = 8.0,
+        networkRtt = 50,
+        webglMaxTextureSize = 8192,
+        webglMaxRenderBufferSize = 8192,
+        audioBaseLatency = 0.022,
+        fontJitterSeed = 202L
+    )
+
+    // --- XIAOMI GROUP ---
+    private val XIAOMI_14_PRO = FakePersona(
+        id = "xiaomi_14_pro",
+        groupId = "xiaomi",
+        isFlagship = true,
+        displayName = "Xiaomi 14 Pro (Flagship)",
+        flagEmoji = "🇨🇳",
+        userAgent = "Mozilla/5.0 (Linux; Android 14; 23116PN5BC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+        brands = listOf(
+            FakePersona.BrandVersion("Not_A Brand", "8"),
+            FakePersona.BrandVersion("Chromium", "145"),
+            FakePersona.BrandVersion("Google Chrome", "145")
+        ),
+        platform = "Android",
+        platformVersion = "14",
+        model = "23116PN5BC",
+        mobile = true,
+        headers = mapOf(
+            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"145\", \"Google Chrome\";v=\"145\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
+            "Accept-Language" to "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        ),
+        screenWidth = 1572, // 393 * 4
+        screenHeight = 3408, // 852 * 4
+        pixelRatio = 4.0, // 393x852 - Modern High-End Bucket
+        cpuCores = 8,
+        ramGB = 16,
+        videoCardRenderer = "Adreno (TM) 750",
+        videoCardVendor = "Qualcomm",
+        noiseSeed = 3001L,
+        locale = "zh-CN",
+        languages = listOf("zh-CN", "zh", "en-US", "en"),
+        timezone = "Asia/Shanghai",
+        clockSkewMs = -2,
+        networkType = "wifi",
+        networkDownlink = 100.0,
+        networkRtt = 10,
+        webglMaxTextureSize = 16384,
+        webglMaxRenderBufferSize = 16384,
+        audioBaseLatency = 0.007,
+        fontJitterSeed = 301L
+    )
+
+    private val REDMI_NOTE_13 = FakePersona(
+        id = "redmi_note_13",
+        groupId = "xiaomi",
+        isFlagship = false,
+        displayName = "Redmi Note 13 (Budget)",
+        flagEmoji = "🇨🇳",
+        userAgent = "Mozilla/5.0 (Linux; Android 13; 23124RA7EO) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+        brands = listOf(
+            FakePersona.BrandVersion("Not_A Brand", "8"),
+            FakePersona.BrandVersion("Chromium", "145"),
+            FakePersona.BrandVersion("Google Chrome", "145")
+        ),
+        platform = "Android",
+        platformVersion = "13",
+        model = "23124RA7EO",
+        mobile = true,
+        headers = mapOf(
+            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"145\", \"Google Chrome\";v=\"145\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
+            "Accept-Language" to "en-US,en;q=0.9",
+        ),
+        screenWidth = 1080,
+        screenHeight = 2400,
+        pixelRatio = 3.0, // 360x800
+        cpuCores = 8,
+        ramGB = 6,
+        videoCardRenderer = "Mali-G57",
+        videoCardVendor = "ARM",
+        noiseSeed = 3002L,
+        locale = "en-US",
+        languages = listOf("en-US", "en"),
+        timezone = "Asia/Kolkata",
+        clockSkewMs = 8,
+        networkType = "4g",
+        networkDownlink = 15.0,
+        networkRtt = 40,
+        webglMaxTextureSize = 8192,
+        webglMaxRenderBufferSize = 8192,
+        audioBaseLatency = 0.025,
+        fontJitterSeed = 302L
+    )
+
+    private val MOTO_EDGE_50_ULTRA = FakePersona(
+        id = "moto_edge_50_ultra",
+        groupId = "motorola",
+        isFlagship = true,
+        displayName = "Moto Edge 50 Ultra (Flagship)",
+        flagEmoji = "🇺🇸",
+        userAgent = "Mozilla/5.0 (Linux; Android 14; Moto Edge 50 Ultra) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+        brands = listOf(
+            FakePersona.BrandVersion("Not_A Brand", "8"),
+            FakePersona.BrandVersion("Chromium", "145"),
+            FakePersona.BrandVersion("Google Chrome", "145")
+        ),
+        platform = "Android",
+        platformVersion = "14",
+        model = "Moto Edge 50 Ultra",
+        mobile = true,
+        headers = mapOf(
+            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"145\", \"Google Chrome\";v=\"145\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
+            "Accept-Language" to "en-US,en;q=0.9",
+        ),
+        screenWidth = 1220, // 406.66 -> 407
+        screenHeight = 2712, 
         pixelRatio = 3.0,
         cpuCores = 8,
         ramGB = 12,
-        videoCardRenderer = "Adreno (TM) 740",
+        videoCardRenderer = "Adreno (TM) 735",
         videoCardVendor = "Qualcomm",
-        noiseSeed = 3003L,
-        locale = "zh-CN",
-        languages = listOf("zh-CN", "zh"),
-        timezone = "Asia/Shanghai",
-        clockSkewMs = 5,
-        networkType = "wifi",
-        networkDownlink = 50.0,
-        networkRtt = 15,
-        webglMaxTextureSize = 8192,
-        webglMaxRenderBufferSize = 8192,
-        webglExtensions = listOf(
-            "EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "OES_standard_derivatives",
-            "WEBGL_debug_renderer_info", "WEBGL_lose_context", "ANGLE_instanced_arrays"
-        ),
-        mediaDeviceLabels = mapOf(
-            "audioinput" to "Internal Microphone",
-            "audiooutput" to "Speaker",
-            "videoinput_front" to "camera2 1, facing front",
-            "videoinput_back" to "camera2 0, facing back"
-        ),
-        webglParams = mapOf(
-            36347 to 4096, // MAX_VERTEX_UNIFORM_VECTORS
-            36348 to 4096, // MAX_FRAGMENT_UNIFORM_VECTORS
-            36349 to 32,   // MAX_VARYING_VECTORS
-            35660 to 16,   // MAX_VERTEX_ATTRIBS
-            35661 to 128,  // MAX_COMBINED_TEXTURE_IMAGE_UNITS
-            33902 to listOf(1, 1),
-            33901 to listOf(1, 1024),
-            34930 to 8
-        ),
-        audioBaseLatency = 0.009,
-        fontJitterSeed = 303L
+        noiseSeed = 4002L,
+        locale = "en-US",
+        languages = listOf("en-US", "en"),
+        timezone = "America/Chicago",
+        clockSkewMs = -3,
+        networkType = "5g",
+        networkDownlink = 25.0,
+        networkRtt = 35,
+        webglMaxTextureSize = 16384,
+        webglMaxRenderBufferSize = 16384,
+        audioBaseLatency = 0.010,
+        fontJitterSeed = 402L
     )
 
-    // A generic fallback or randomizer could pick one of these
+    private val MOTO_G54 = FakePersona(
+        id = "moto_g54",
+        groupId = "motorola",
+        isFlagship = false,
+        displayName = "Moto G54 (Budget)",
+        flagEmoji = "🇺🇸",
+        userAgent = "Mozilla/5.0 (Linux; Android 14; Moto G54) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36",
+        brands = listOf(
+            FakePersona.BrandVersion("Not_A Brand", "8"),
+            FakePersona.BrandVersion("Chromium", "145"),
+            FakePersona.BrandVersion("Google Chrome", "145")
+        ),
+        platform = "Android",
+        platformVersion = "14",
+        model = "Moto G54",
+        mobile = true,
+        headers = mapOf(
+            "sec-ch-ua" to "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"145\", \"Google Chrome\";v=\"145\"",
+            "sec-ch-ua-mobile" to "?1",
+            "sec-ch-ua-platform" to "\"Android\"",
+            "Accept-Language" to "en-US,en;q=0.9",
+        ),
+        screenWidth = 1080,
+        screenHeight = 2400,
+        pixelRatio = 2.625, // 411x914
+        cpuCores = 8,
+        ramGB = 4, // THE 4GB BUCKET
+        videoCardRenderer = "IMG BXM-8-256",
+        videoCardVendor = "Imagination Technologies",
+        noiseSeed = 4001L,
+        locale = "en-US",
+        languages = listOf("en-US", "en"),
+        timezone = "America/Los_Angeles",
+        clockSkewMs = 2,
+        networkType = "4g",
+        networkDownlink = 10.0,
+        networkRtt = 55,
+        webglMaxTextureSize = 4096,
+        webglMaxRenderBufferSize = 4096,
+        audioBaseLatency = 0.030,
+        fontJitterSeed = 401L
+    )
+
     val GOLDEN_PROFILES = listOf(
-        PIXEL_8_PRO,
-        GALAXY_S23_ULTRA,
-        XIAOMI_13
+        PIXEL_8_PRO, PIXEL_7A,
+        GALAXY_S24_ULTRA, GALAXY_A54,
+        XIAOMI_14_PRO, REDMI_NOTE_13,
+        MOTO_EDGE_50_ULTRA, MOTO_G54
     )
 
     fun getPersonaById(id: String): FakePersona? {
@@ -195,5 +372,13 @@ object PersonaRepository {
 
     fun getRandomPersona(): FakePersona {
         return GOLDEN_PROFILES.random()
+    }
+
+    /**
+     * Get a specific profile within a group based on Flagship/Budget preference
+     */
+    fun getPersonaInGroup(groupId: String, flagship: Boolean): FakePersona {
+        return GOLDEN_PROFILES.find { it.groupId == groupId && it.isFlagship == flagship }
+            ?: GOLDEN_PROFILES.first { it.groupId == groupId }
     }
 }

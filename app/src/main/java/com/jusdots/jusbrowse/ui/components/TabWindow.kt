@@ -59,6 +59,7 @@ import com.jusdots.jusbrowse.ui.components.BrowserContextMenu
 import com.jusdots.jusbrowse.ui.components.ContextMenuData
 import com.jusdots.jusbrowse.ui.components.ContextMenuType
 import kotlin.math.roundToInt
+import kotlinx.coroutines.runBlocking
 
 @Composable
 fun TabWindow(
@@ -466,6 +467,9 @@ fun TabWindow(
                                  existing
                              } else {
                                  WebView(ctx).apply {
+                                     // State Partitioning: Apply isolated profile
+                                     com.jusdots.jusbrowse.security.ContainerManager.applyContainer(this, tab.containerId ?: "default")
+                                     
                                      // CONTEXT MENU INTEGRATION
                                      setOnLongClickListener { view ->
                                          val hitTestResult = (view as WebView).hitTestResult
@@ -610,7 +614,7 @@ fun TabWindow(
                                              val url = request?.url?.toString() ?: return null
                                              
                                              // Ad Blocking
-                                             if (adBlockEnabled && viewModel.contentBlocker.shouldBlock(url)) {
+                                             if (adBlockEnabled && runBlocking { viewModel.contentBlocker.shouldBlock(url) }) {
                                                  return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
                                              }
                                              

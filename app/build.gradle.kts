@@ -65,6 +65,7 @@ dependencies {
     
     // WebView
     implementation(libs.accompanist.webview)
+    implementation(libs.androidx.webkit)
     
     // DataStore
     implementation(libs.androidx.datastore.preferences)

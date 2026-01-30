@@ -99,6 +99,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     init {
         viewModelScope.launch {
             loadSession()
+            // Sync timezone with network for airtight spoofing
+            com.jusdots.jusbrowse.security.FakeModeManager.syncTimezoneWithNetwork(this)
         }
     }
 
@@ -128,7 +130,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 } else emptyMap()
 
                 tabs.clear()
-                tabs.addAll(loadedTabs)
+                // Sanitize loaded tabs to ensure no null containerId from old sessions
+                val sanitizedTabs = loadedTabs.map { tab ->
+                    // Use a safe check even if Kotlin thinks it's non-null
+                    val cid = try { tab.containerId } catch (e: Exception) { null }
+                    if (cid == null) tab.copy(containerId = "default") else tab
+                }
+                tabs.addAll(sanitizedTabs)
                 
                 tabWindowStates.clear()
                 tabWindowStates.putAll(loadedStates)
@@ -210,12 +218,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         _currentScreen.value = screen
     }
 
-    fun createNewTab(url: String = "about:blank", isPrivate: Boolean = false, select: Boolean = true) {
+    fun createNewTab(url: String = "about:blank", isPrivate: Boolean = false, containerId: String = "default", select: Boolean = true) {
         val newTabId = UUID.randomUUID().toString()
         val newTab = BrowserTab(
             id = newTabId,
             url = url,
-            isPrivate = isPrivate
+            isPrivate = isPrivate,
+            containerId = containerId
         )
         tabs.add(newTab)
         

@@ -72,14 +72,14 @@ fun FakeModeDialog(
 
                 // Description
                 Text(
-                    text = "Create a separate digital identity that websites see instead of your real device.",
+                    text = "A brand-based identity that alternates between Flagship and Budget profiles each session for extra variety.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Warning
                 Card(
@@ -111,7 +111,7 @@ fun FakeModeDialog(
 
                 // Persona Selection
                 Text(
-                    text = "Choose Persona",
+                    text = "Select Brand Identity",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -121,8 +121,8 @@ fun FakeModeDialog(
                 // Random Option
                 PersonaOption(
                     emoji = "🎲",
-                    name = "Random",
-                    description = "New identity each session",
+                    name = "Random Brand",
+                    description = "Choose a new brand automatically",
                     isSelected = useRandom,
                     onClick = {
                         useRandom = true
@@ -138,14 +138,14 @@ fun FakeModeDialog(
                         .fillMaxWidth()
                         .height(200.dp)
                 ) {
-                    items(PersonaPresets.ALL_PRESETS) { persona ->
+                    items(PersonaPresets.ALL_GROUPS) { personaGroup ->
                         PersonaOption(
-                            emoji = persona.flagEmoji,
-                            name = persona.displayName,
-                            description = "${persona.deviceManufacturer} ${persona.deviceModel.take(10)}",
-                            isSelected = selectedPersona == persona && !useRandom,
+                            emoji = personaGroup.flagEmoji,
+                            name = personaGroup.groupId.replaceFirstChar { it.uppercase() },
+                            description = "Alternates Flagship/Budget",
+                            isSelected = selectedPersona?.groupId == personaGroup.groupId && !useRandom,
                             onClick = {
-                                selectedPersona = persona
+                                selectedPersona = personaGroup
                                 useRandom = false
                             }
                         )

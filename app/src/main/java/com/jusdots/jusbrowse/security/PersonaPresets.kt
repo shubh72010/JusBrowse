@@ -8,6 +8,8 @@ object PersonaPresets {
 
     val ALL_PRESETS: List<FakePersona> get() = PersonaRepository.GOLDEN_PROFILES
 
+    val ALL_GROUPS: List<FakePersona> get() = PersonaRepository.GOLDEN_PROFILES.filter { it.isFlagship }
+
     /**
      * Get a random persona
      */

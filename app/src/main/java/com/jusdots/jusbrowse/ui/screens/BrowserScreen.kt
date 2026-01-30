@@ -81,7 +81,7 @@ fun BrowserScreen(
                     activeTabIndex = activeTabIndex,
                     onTabSelected = { index -> viewModel.switchTab(index) },
                     onTabClosed = { index -> viewModel.closeTab(index) },
-                    onNewTab = { viewModel.createNewTab() },
+                    onNewTab = { containerId -> viewModel.createNewTab(containerId = containerId) },
                     showIcons = showTabIcons
                 )
             }

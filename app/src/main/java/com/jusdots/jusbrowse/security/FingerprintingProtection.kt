@@ -10,26 +10,40 @@ object FingerprintingProtection {
      * JavaScript code to inject for fingerprinting protection
      * Should be injected on every page load via evaluateJavascript()
      */
-    val protectionScript: String = """
+    fun getProtectionScript(seed: Int): String = """
         (function() {
             'use strict';
-            
+            const NOISE_SEED = $seed;
+
+            // Mulberry32 PRNG for stable, seeded noise
+            const prng = (function(seed) {
+                return function() {
+                    let t = seed += 0x6D2B79F5;
+                    t = Math.imul(t ^ t >>> 15, t | 1);
+                    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+                    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+                };
+            })(NOISE_SEED);
+
+            // Helper to define properties that look real
+            const defineSafeProp = (obj, prop, getter) => {
+                Object.defineProperty(obj, prop, {
+                    get: getter,
+                    enumerable: true,
+                    configurable: true
+                });
+            };
+
             // Block navigator.deviceMemory
             try {
                 if (navigator.deviceMemory !== undefined) {
-                    Object.defineProperty(navigator, 'deviceMemory', {
-                        get: function() { return 8; }, // Report standard value
-                        configurable: false
-                    });
+                    defineSafeProp(navigator, 'deviceMemory', () => 8);
                 }
             } catch(e) { }
             
-            // Block navigator.hardwareConcurrency spoofing
+            // Block navigator.hardwareConcurrency
             try {
-                Object.defineProperty(navigator, 'hardwareConcurrency', {
-                    get: function() { return 4; }, // Report standard value
-                    configurable: false
-                });
+                defineSafeProp(navigator, 'hardwareConcurrency', () => 8);
             } catch(e) { }
             
             // Block Battery API
@@ -41,75 +55,55 @@ object FingerprintingProtection {
                 }
             } catch(e) { }
             
-            // Block Vibration API
+            // WebGL debug info
             try {
-                if (navigator.vibrate) {
-                    navigator.vibrate = function() { return false; };
-                }
-            } catch(e) { }
-            
-            // Block WebGL debug info (WEBGL_debug_renderer_info)
-            try {
-                const getParameterOriginal = WebGLRenderingContext.prototype.getParameter;
-                WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                    // UNMASKED_VENDOR_WEBGL = 37445, UNMASKED_RENDERER_WEBGL = 37446
-                    if (parameter === 37445 || parameter === 37446) {
-                        return 'Generic GPU';
-                    }
-                    return getParameterOriginal.call(this, parameter);
-                };
-            } catch(e) { }
-            
-            // Also block for WebGL2
-            try {
-                if (typeof WebGL2RenderingContext !== 'undefined') {
-                    const getParameter2Original = WebGL2RenderingContext.prototype.getParameter;
-                    WebGL2RenderingContext.prototype.getParameter = function(parameter) {
-                        if (parameter === 37445 || parameter === 37446) {
-                            return 'Generic GPU';
-                        }
-                        return getParameter2Original.call(this, parameter);
+                const webglTargets = [WebGLRenderingContext, (typeof WebGL2RenderingContext !== 'undefined' ? WebGL2RenderingContext : null)];
+                webglTargets.forEach(t => {
+                    if (!t) return;
+                    const originalGetParameter = t.prototype.getParameter;
+                    t.prototype.getParameter = function(param) {
+                        if (param === 37445 || param === 37446) return 'Generic GPU';
+                        return originalGetParameter.apply(this, arguments);
                     };
-                }
+                });
             } catch(e) { }
             
-            // Block screen resolution fingerprinting (report common values)
+            // Screen resolution
             try {
-                Object.defineProperty(screen, 'width', { get: function() { return 1920; } });
-                Object.defineProperty(screen, 'height', { get: function() { return 1080; } });
-                Object.defineProperty(screen, 'availWidth', { get: function() { return 1920; } });
-                Object.defineProperty(screen, 'availHeight', { get: function() { return 1040; } });
-                Object.defineProperty(screen, 'colorDepth', { get: function() { return 24; } });
-                Object.defineProperty(screen, 'pixelDepth', { get: function() { return 24; } });
+                // Common mobile-ish bucket for default protection
+                defineSafeProp(screen, 'width', () => 412);
+                defineSafeProp(screen, 'height', () => 915);
+                defineSafeProp(screen, 'availWidth', () => 412);
+                defineSafeProp(screen, 'availHeight', () => 915);
             } catch(e) { }
             
-            // Block timezone fingerprinting (report UTC)
+            // Timezone
             try {
-                const originalGetTimezoneOffset = Date.prototype.getTimezoneOffset;
-                Date.prototype.getTimezoneOffset = function() {
-                    return 0; // UTC
-                };
+                Date.prototype.getTimezoneOffset = function() { return 0; };
             } catch(e) { }
             
-            // Block canvas fingerprinting (add subtle noise)
+            // Canvas Seeded Noise
             try {
-                const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-                HTMLCanvasElement.prototype.toDataURL = function(type, quality) {
-                    // Add subtle noise to canvas output
-                    const ctx = this.getContext('2d');
-                    if (ctx) {
-                        const imageData = ctx.getImageData(0, 0, this.width, this.height);
-                        for (let i = 0; i < imageData.data.length; i += 4) {
-                            // Add subtle random noise to RGB values
-                            imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + (Math.random() * 2 - 1)));
-                        }
-                        ctx.putImageData(imageData, 0, 0);
+                const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+                CanvasRenderingContext2D.prototype.getImageData = function() {
+                    const imageData = originalGetImageData.apply(this, arguments);
+                    const buffer = imageData.data;
+                    const callPrng = (function(s) { 
+                        return function() {
+                            let t = s += 0x6D2B79F5;
+                            t = Math.imul(t ^ t >>> 15, t | 1);
+                            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+                        };
+                    })(NOISE_SEED);
+
+                    for (let i = 0; i < buffer.length; i += 160) {
+                        if (callPrng() > 0.5) buffer[i] = buffer[i] ^ 1;
                     }
-                    return originalToDataURL.call(this, type, quality);
+                    return imageData;
                 };
             } catch(e) { }
             
-            // Block AudioContext fingerprinting
+            // AudioContext noise
             try {
                 if (typeof AudioContext !== 'undefined') {
                     const originalCreateAnalyser = AudioContext.prototype.createAnalyser;
@@ -118,29 +112,15 @@ object FingerprintingProtection {
                         const originalGetFloatFrequencyData = analyser.getFloatFrequencyData;
                         analyser.getFloatFrequencyData = function(array) {
                             originalGetFloatFrequencyData.call(this, array);
-                            // Add noise
-                            for (let i = 0; i < array.length; i++) {
-                                array[i] += Math.random() * 0.001;
-                            }
+                            const noiseVal = (prng() * 0.001);
+                            for (let i = 0; i < array.length; i++) array[i] += noiseVal;
                         };
                         return analyser;
                     };
                 }
             } catch(e) { }
             
-            // Block connection type fingerprinting
-            try {
-                if (navigator.connection) {
-                    Object.defineProperty(navigator.connection, 'effectiveType', {
-                        get: function() { return '4g'; }
-                    });
-                    Object.defineProperty(navigator.connection, 'downlink', {
-                        get: function() { return 10; }
-                    });
-                }
-            } catch(e) { }
-            
-            console.log('[JusBrowse] Fingerprinting protection enabled');
+            console.log('[JusBrowse] Seeded protection enabled');
         })();
     """.trimIndent()
 
