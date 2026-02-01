@@ -5,4 +5,6 @@ I might now know why many of devs use basic spoofing instead of going this much 
 
 Also, I've looked at this https://github.com/fingerprintjs/fingerprintjs  and honestly,it scares the living hell out of me that how far trackers can go and how less the current browsers protects you.
 
+**once you see it, you can't unsee it.**
+
 so yeah, no giving up, motivation high and privacy to max 💪
