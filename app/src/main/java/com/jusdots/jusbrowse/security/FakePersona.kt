@@ -16,6 +16,7 @@ data class FakePersona(
     // Client Hints (Sec-CH-UA-*)
     val brands: List<BrandVersion>,
     val platform: String,
+    val platformString: String, // e.g. "Linux aarch64" or "iPhone"
     val platformVersion: String,
     val model: String,
     val mobile: Boolean,

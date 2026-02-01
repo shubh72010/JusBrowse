@@ -150,9 +150,14 @@ fun AddressBarWithWebView(
             
             IconButton(
                 onClick = {
-                    // Reload
-                    val currentUrl = tab?.url ?: return@IconButton
-                    viewModel.navigateToUrlForIndex(tabIndex, currentUrl)
+                    val webView = tab?.let { viewModel.getWebView(it.id) }
+                    if (tab?.isLoading == true) {
+                        webView?.stopLoading()
+                    } else {
+                        // Force Refresh: Bypass cache for this load
+                        webView?.settings?.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                        webView?.reload()
+                    }
                 }
             ) {
                 Icon(
@@ -188,6 +193,7 @@ fun AddressBarWithWebView(
                              
                              settings.javaScriptEnabled = true
                              settings.domStorageEnabled = true
+                             addJavascriptInterface(com.jusdots.jusbrowse.security.FakeModeManager.PrivacyBridge(), "jusPrivacyBridge")
                              
                              setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
                                  // Post to main thread to show dialog
@@ -258,6 +264,11 @@ fun AddressBarWithWebView(
                                       // 3. Inject Persona Fingerprints (Early)
                                       val script = com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript()
                                       view?.evaluateJavascript(script, null)
+
+                                      // 4. Reset cache mode after force-refresh
+                                      if (!tab.isPrivate) {
+                                          view?.settings?.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                                      }
 
                                       viewModel.updateTabLoadingState(tabIndex, true)
                                       url?.let { 

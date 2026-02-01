@@ -2,6 +2,7 @@ package com.jusdots.jusbrowse.security
 
 import android.content.Context
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebStorage
 import android.webkit.WebView
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +30,16 @@ object FakeModeManager {
     private var sessionBatteryCharging: Boolean = true
     private var sessionIsFlagship: Boolean = true
     private var networkTimezone: String? = null
+    private var sessionStartTime: Long = System.currentTimeMillis()
+
+    /**
+     * Calculate battery level with linear drift (0.5% per 10 minutes)
+     */
+    fun getDriftedBatteryLevel(): Double {
+        val elapsedMinutes = (System.currentTimeMillis() - sessionStartTime) / 60000.0
+        val drift = (elapsedMinutes / 10.0) * 0.005
+        return (sessionBatteryLevel - drift).coerceAtLeast(0.01)
+    }
 
     /**
      * Randomize session-specific values (Battery, Performance Tier)
@@ -42,6 +53,7 @@ object FakeModeManager {
         // Toggle Flagship vs Budget for this session
         sessionIsFlagship = Math.random() > 0.5
         networkTimezone = null // Reset for new session
+        sessionStartTime = System.currentTimeMillis()
     }
 
     /**
@@ -178,27 +190,50 @@ object FakeModeManager {
     /**
      * Generate persona-specific fingerprinting script
      */
+    /**
+     * Generate persona-specific fingerprinting script using the Privacy Bus
+     */
     private fun generatePersonaScript(persona: FakePersona): String {
-        // Calculate Timezone Offset (Phase 1 Fix)
-        // SMART TIMEZONE HARMONIZER: Prefer Network/IP timezone, fallback to System/VPN
-        val tz = networkTimezone?.let { java.util.TimeZone.getTimeZone(it) } ?: java.util.TimeZone.getDefault()
+        // 1. Collect Raw OS Data (Mocking the capture for now)
+        val rawData = mapOf(
+            PrivacyPacket.KEY_SCREEN_WIDTH to 1080, // Real would come from DisplayMetrics
+            PrivacyPacket.KEY_SCREEN_HEIGHT to 2412,
+            PrivacyPacket.KEY_PIXEL_RATIO to 3.0,
+            PrivacyPacket.KEY_BATTERY_LEVEL to getDriftedBatteryLevel(),
+            PrivacyPacket.KEY_BATTERY_CHARGING to sessionBatteryCharging,
+            PrivacyPacket.KEY_TIMEZONE to (networkTimezone ?: java.util.TimeZone.getDefault().id)
+        )
+        val rawPacket = PrivacyPacket(PrivacyState.RAW, rawData)
+
+        // 2. Process through Privacy Bus (Priv8 -> RLE)
+        val processedPacket = PrivacyBus.process(rawPacket, persona)
+        val data = processedPacket.data
+
+        // 3. Extract Glowed values
+        val logicWidth = data[PrivacyPacket.KEY_SCREEN_WIDTH] as? Int ?: 360
+        val logicHeight = data[PrivacyPacket.KEY_SCREEN_HEIGHT] as? Int ?: 800
+        val pixelRatio = data[PrivacyPacket.KEY_PIXEL_RATIO] as? Double ?: 2.0
+        val tzId = data[PrivacyPacket.KEY_TIMEZONE] as? String ?: "UTC"
+        val userAgent = data[PrivacyPacket.KEY_USER_AGENT] as? String ?: persona.userAgent
+        val platform = data[PrivacyPacket.KEY_PLATFORM] as? String ?: "Android"
+        val platformString = data[PrivacyPacket.KEY_PLATFORM_STRING] as? String ?: "Linux aarch64"
+        val language = data[PrivacyPacket.KEY_LANGUAGE] as? String ?: "en-US"
+        
+        // Calculate dynamic JS offset for the processed timezone
+        val tz = java.util.TimeZone.getTimeZone(tzId)
         val offsetMillis = tz.getOffset(System.currentTimeMillis())
         val jsOffsetMinutes = -(offsetMillis / 60000)
-        val tzId = tz.id
         val tzDisplayName = tz.getDisplayName(tz.inDaylightTime(java.util.Date()), java.util.TimeZone.LONG)
-        
-        // Logical Screen (Phase 1 Fix)
-        val logicWidth = (persona.screenWidth / persona.pixelRatio).toInt()
-        val logicHeight = (persona.screenHeight / persona.pixelRatio).toInt()
 
-        // Round battery level to 2 decimal places to avoid high-precision fingerprinting
-        val roundedBatteryLevel = "%.2f".format(sessionBatteryLevel)
+        val roundedBatteryLevel = "%.2f".format(data[PrivacyPacket.KEY_BATTERY_LEVEL] as? Double ?: 0.5)
+        val batteryCharging = data[PrivacyPacket.KEY_BATTERY_CHARGING] as? Boolean ?: false
 
         return """
             (function() {
                 'use strict';
                 const NOISE_SEED = ${persona.noiseSeed};
                 const CLOCK_SKEW_MS = ${persona.clockSkewMs};
+                const PRIVACY_STATE = '${processedPacket.state}';
                 
                 // Mulberry32 PRNG for stable, seeded noise
                 const prng = (function(seed) {
@@ -239,23 +274,39 @@ object FakeModeManager {
                     });
                 };
 
-                // ===== TIME & PERFORMANCE (Seeded Jitter) =====
+                // ===== TIME & PERFORMANCE (Precision Rounding) =====
                 try {
+                    const TIME_PRECISION_MS = ${data[PrivacyPacket.KEY_TIME_PRECISION_MS] as? Int ?: 100};
                     const perfOffset = (prng() * 10) - 5; 
+                    
                     const originalNow = Performance.prototype.now;
                     Performance.prototype.now = makeNative(function() {
-                        return originalNow.call(this) + perfOffset;
+                        const t = originalNow.call(this) + perfOffset;
+                        return Math.floor(t / TIME_PRECISION_MS) * TIME_PRECISION_MS;
                     }, 'now');
                     
                     const originalDateNow = Date.now;
                     Date.now = makeNative(function() {
-                        return originalDateNow.call(Date) + Math.round(perfOffset);
+                        const t = originalDateNow.call(Date) + Math.round(perfOffset);
+                        return Math.floor(t / TIME_PRECISION_MS) * TIME_PRECISION_MS;
                     }, 'now');
 
                     const originalGetTime = Date.prototype.getTime;
                     Date.prototype.getTime = makeNative(function() {
-                        return originalGetTime.call(this) + Math.round(perfOffset);
+                        const t = originalGetTime.call(this) + Math.round(perfOffset);
+                        return Math.floor(t / TIME_PRECISION_MS) * TIME_PRECISION_MS;
                     }, 'getTime');
+
+                    // Block performance.getEntries() leaks
+                    const originalGetEntries = Performance.prototype.getEntries;
+                    Performance.prototype.getEntries = makeNative(function() {
+                        return []; 
+                    }, 'getEntries');
+
+                    const originalGetEntriesByType = Performance.prototype.getEntriesByType;
+                    Performance.prototype.getEntriesByType = makeNative(function() {
+                        return [];
+                    }, 'getEntriesByType');
                 } catch(e) {}
 
                 // ===== PERMISSIONS SPOOFING =====
@@ -275,9 +326,9 @@ object FakeModeManager {
                 // ===== BATTERY API (Low Precision) =====
                 try {
                     const batteryMock = {
-                        charging: $sessionBatteryCharging,
-                        chargingTime: $sessionBatteryCharging ? 3600 : Infinity,
-                        dischargingTime: $sessionBatteryCharging ? Infinity : 18000,
+                        charging: $batteryCharging,
+                        chargingTime: $batteryCharging ? 3600 : Infinity,
+                        dischargingTime: $batteryCharging ? Infinity : 18000,
                         level: $roundedBatteryLevel,
                         addEventListener: makeNative(function() {}, 'addEventListener'),
                         removeEventListener: makeNative(function() {}, 'removeEventListener'),
@@ -300,7 +351,7 @@ object FakeModeManager {
                     for (const prop in screenProps) {
                         defineSafeProp(screen, prop, () => screenProps[prop]);
                     }
-                    defineSafeProp(window, 'devicePixelRatio', () => ${persona.pixelRatio});
+                    defineSafeProp(window, 'devicePixelRatio', () => $pixelRatio);
                     defineSafeProp(window, 'outerWidth', () => lWidth);
                     defineSafeProp(window, 'outerHeight', () => lHeight);
                     defineSafeProp(window, 'innerWidth', () => lWidth);
@@ -309,14 +360,16 @@ object FakeModeManager {
                 
                 // ===== NAVIGATOR & CLIENT HINTS =====
                 try {
-                    defineSafeProp(navigator, 'userAgent', () => '${persona.userAgent}');
-                    defineSafeProp(navigator, 'platform', () => 'Linux armv8l'); 
+                    defineSafeProp(navigator, 'userAgent', () => '$userAgent');
+                    defineSafeProp(navigator, 'appVersion', () => '$userAgent'.replace('Mozilla/', ''));
+                    defineSafeProp(navigator, 'platform', () => '$platformString'); 
+                    defineSafeProp(navigator, 'vendor', () => ${if (persona.platform == "Android") "'Google Inc.'" else "'Apple Computer, Inc.'"});
                     defineSafeProp(navigator, 'maxTouchPoints', () => ${if (persona.mobile) 5 else 0});
-                    defineSafeProp(navigator, 'hardwareConcurrency', () => ${persona.cpuCores});
+                    defineSafeProp(navigator, 'hardwareConcurrency', () => Math.min(12, ${data[PrivacyPacket.KEY_HARDWARE_CONCURRENCY] as? Int ?: 8}));
                     defineSafeProp(navigator, 'webdriver', () => false);
                     defineSafeProp(navigator, 'doNotTrack', () => '${persona.doNotTrack}');
                     if (navigator.deviceMemory !== undefined) {
-                        defineSafeProp(navigator, 'deviceMemory', () => ${persona.ramGB});
+                        defineSafeProp(navigator, 'deviceMemory', () => Math.min(8, ${data[PrivacyPacket.KEY_DEVICE_MEMORY] as? Int ?: 8}));
                     }
 
                     const createMockArray = (type, tag) => {
@@ -354,7 +407,7 @@ object FakeModeManager {
                 
                 // ===== LOCALE & TIMEZONE =====
                 try {
-                    const locale = '${persona.locale}';
+                    const locale = '$language'; 
                     defineSafeProp(navigator, 'language', () => locale);
                     defineSafeProp(navigator, 'languages', () => ${persona.languages.joinToString(",", "[", "]") { "'$it'" }});
                     
@@ -439,34 +492,410 @@ object FakeModeManager {
                     });
                 } catch(e) {}
 
-                // ===== CANVAS SEEDED NOISE =====
+                // ===== HEURISTIC TELEMETRY =====
+                const reportSuspicion = (points, reason) => {
+                    try { window.jusPrivacyBridge.reportSuspicion(points, reason); } catch(e) {}
+                };
+
+                // ===== CANVAS SEEDED NOISE (Origin Salted) =====
                 try {
+                    const originSalt = (function(str) {
+                        let hash = 0;
+                        for (let i = 0; i < str.length; i++) {
+                            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                            hash |= 0;
+                        }
+                        return hash;
+                    })(window.location.origin);
+
                     const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
                     CanvasRenderingContext2D.prototype.getImageData = makeNative(function(x, y, w, h) {
+                        reportSuspicion(20, 'Canvas Access');
                         const imageData = originalGetImageData.apply(this, arguments);
                         const buffer = imageData.data;
-                        const callPrng = (function(seed) { 
+                        const canvasPrng = (function(seed) { 
                             return function() {
                                 let t = seed += 0x6D2B79F5;
                                 t = Math.imul(t ^ t >>> 15, t | 1);
                                 return ((t ^ t >>> 14) >>> 0) / 4294967296;
                             };
-                        })(NOISE_SEED);
+                        })(NOISE_SEED ^ originSalt);
 
-                        for (let i = 0; i < buffer.length; i += 160) {
-                            if (callPrng() > 0.5) buffer[i] = buffer[i] ^ 1;
+                        for (let i = 0; i < buffer.length; i += 64) {
+                            if (canvasPrng() > 0.98) {
+                                buffer[i] = buffer[i] ^ 1; // Subtle noise
+                            }
                         }
                         return imageData;
                     }, 'getImageData');
+
+                    const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+                    HTMLCanvasElement.prototype.toDataURL = makeNative(function() {
+                        reportSuspicion(25, 'Canvas Export');
+                        return originalToDataURL.apply(this, arguments);
+                    }, 'toDataURL');
                     
                     if (window.AudioContext || window.webkitAudioContext) {
                         const AC = window.AudioContext || window.webkitAudioContext;
                         defineSafeProp(AC.prototype, 'baseLatency', () => ${persona.audioBaseLatency});
                         defineSafeProp(AC.prototype, 'outputLatency', () => ${persona.audioBaseLatency + 0.005});
+                        
+                        const originalAC = AC.prototype.constructor;
+                        window.AudioContext = makeNative(function() {
+                            reportSuspicion(30, 'AudioContext Created');
+                            return new originalAC();
+                        }, 'AudioContext');
+                    }
+                } catch(e) {}
+
+                // ===== SENSOR MICRO-JITTER (Ambient Motion) =====
+                try {
+                    const originalAddEventListener = window.addEventListener;
+                    window.addEventListener = makeNative(function(type, listener, options) {
+                        if (type === 'devicemotion' || type === 'deviceorientation') {
+                            reportSuspicion(50, 'Sensor Access');
+                        }
+                        return originalAddEventListener.apply(this, arguments);
+                    }, 'addEventListener');
+                } catch(e) {}
+
+                // ===== WEBRTC LOCAL IP PROTECTION =====
+                try {
+                    const originalRTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+                    if (originalRTCPeerConnection) {
+                        window.RTCPeerConnection = makeNative(function(config, constraints) {
+                            reportSuspicion(40, 'WebRTC PeerConnection');
+                            // Force STUN-only to prevent local IP leak
+                            if (config && config.iceServers) {
+                                config.iceServers = config.iceServers.filter(s => 
+                                    s.urls && (Array.isArray(s.urls) ? s.urls : [s.urls])
+                                        .some(u => u.startsWith('stun:') || u.startsWith('turn:'))
+                                );
+                            }
+                            const pc = new originalRTCPeerConnection(config, constraints);
+                            
+                            // Filter local candidates
+                            const originalAddIceCandidate = pc.addIceCandidate.bind(pc);
+                            pc.addIceCandidate = makeNative(function(candidate) {
+                                if (candidate && candidate.candidate) {
+                                    // Block local IP candidates
+                                    if (candidate.candidate.includes('192.168.') ||
+                                        candidate.candidate.includes('10.') ||
+                                        candidate.candidate.includes('172.16.')) {
+                                        return Promise.resolve();
+                                    }
+                                }
+                                return originalAddIceCandidate(candidate);
+                            }, 'addIceCandidate');
+                            
+                            return pc;
+                        }, 'RTCPeerConnection');
+                        window.RTCPeerConnection.prototype = originalRTCPeerConnection.prototype;
+                        if (window.webkitRTCPeerConnection) {
+                            window.webkitRTCPeerConnection = window.RTCPeerConnection;
+                        }
+                    }
+                } catch(e) {}
+
+                // ===== MEDIA DEVICES ENUMERATION SPOOFING =====
+                try {
+                    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                        const fakeDevices = [
+                            { deviceId: 'default', kind: 'audioinput', label: '', groupId: 'default' },
+                            { deviceId: 'default', kind: 'audiooutput', label: '', groupId: 'default' },
+                            { deviceId: 'camera1', kind: 'videoinput', label: '', groupId: 'camera' }
+                        ];
+                        navigator.mediaDevices.enumerateDevices = makeNative(function() {
+                            reportSuspicion(25, 'MediaDevices Enumeration');
+                            return Promise.resolve(fakeDevices.map(d => ({
+                                deviceId: d.deviceId,
+                                kind: d.kind,
+                                label: d.label,
+                                groupId: d.groupId,
+                                toJSON: makeNative(function() { return d; }, 'toJSON')
+                            })));
+                        }, 'enumerateDevices');
+                    }
+                } catch(e) {}
+
+                // ===== NAVIGATOR.CONNECTION FULL API =====
+                try {
+                    if (navigator.connection) {
+                        const connProps = {
+                            effectiveType: '${persona.networkType}',
+                            downlink: ${persona.networkDownlink},
+                            rtt: ${persona.networkRtt},
+                            saveData: false,
+                            type: 'cellular'
+                        };
+                        for (const prop in connProps) {
+                            try {
+                                defineSafeProp(navigator.connection, prop, () => connProps[prop]);
+                            } catch(e) {}
+                        }
+                    }
+                } catch(e) {}
+
+                // ===== SPEECH SYNTHESIS PROTECTION =====
+                try {
+                    if (window.speechSynthesis) {
+                        window.speechSynthesis.getVoices = makeNative(function() {
+                            reportSuspicion(15, 'Speech Voices');
+                            // Return minimal Android-consistent voice list
+                            return [];
+                        }, 'getVoices');
+                    }
+                } catch(e) {}
+
+                // ===== STORAGE QUOTA SPOOFING =====
+                try {
+                    if (navigator.storage && navigator.storage.estimate) {
+                        const originalEstimate = navigator.storage.estimate;
+                        navigator.storage.estimate = makeNative(function() {
+                            reportSuspicion(10, 'Storage Estimate');
+                            // Return generic values
+                            return Promise.resolve({
+                                quota: 1073741824, // 1GB - common value
+                                usage: Math.floor(Math.random() * 10485760), // Random 0-10MB
+                                usageDetails: {}
+                            });
+                        }, 'estimate');
+                    }
+                } catch(e) {}
+
+                // ===== OFFSCREEN CANVAS PROTECTION =====
+                try {
+                    if (typeof OffscreenCanvas !== 'undefined') {
+                        const OriginalOffscreenCanvas = OffscreenCanvas;
+                        window.OffscreenCanvas = makeNative(function(width, height) {
+                            reportSuspicion(30, 'OffscreenCanvas');
+                            const canvas = new OriginalOffscreenCanvas(width, height);
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                                const originalGetImageData = ctx.getImageData;
+                                ctx.getImageData = makeNative(function(x, y, w, h) {
+                                    const imageData = originalGetImageData.apply(this, arguments);
+                                    // Apply same noise as regular canvas
+                                    const buffer = imageData.data;
+                                    for (let i = 0; i < buffer.length; i += 64) {
+                                        if (prng() > 0.98) buffer[i] = buffer[i] ^ 1;
+                                    }
+                                    return imageData;
+                                }, 'getImageData');
+                            }
+                            return canvas;
+                        }, 'OffscreenCanvas');
+                    }
+                } catch(e) {}
+
+                // ===== CSS.SUPPORTS() AND MATCHMEDIA() INTERCEPTION =====
+                try {
+                    // matchMedia - return persona-consistent values
+                    const originalMatchMedia = window.matchMedia;
+                    window.matchMedia = makeNative(function(query) {
+                        const result = originalMatchMedia.call(window, query);
+                        
+                        // Intercept color scheme and contrast to prevent fingerprinting
+                        if (query.includes('prefers-color-scheme')) {
+                            return {
+                                matches: query.includes('light'),
+                                media: query,
+                                onchange: null,
+                                addListener: makeNative(function() {}, 'addListener'),
+                                removeListener: makeNative(function() {}, 'removeListener'),
+                                addEventListener: makeNative(function() {}, 'addEventListener'),
+                                removeEventListener: makeNative(function() {}, 'removeEventListener'),
+                                dispatchEvent: makeNative(function() { return false; }, 'dispatchEvent')
+                            };
+                        }
+                        if (query.includes('prefers-contrast')) {
+                            return {
+                                matches: query.includes('no-preference'),
+                                media: query,
+                                onchange: null,
+                                addListener: makeNative(function() {}, 'addListener'),
+                                removeListener: makeNative(function() {}, 'removeListener'),
+                                addEventListener: makeNative(function() {}, 'addEventListener'),
+                                removeEventListener: makeNative(function() {}, 'removeEventListener'),
+                                dispatchEvent: makeNative(function() { return false; }, 'dispatchEvent')
+                            };
+                        }
+                        if (query.includes('prefers-reduced-motion')) {
+                            return {
+                                matches: false,
+                                media: query,
+                                onchange: null,
+                                addListener: makeNative(function() {}, 'addListener'),
+                                removeListener: makeNative(function() {}, 'removeListener'),
+                                addEventListener: makeNative(function() {}, 'addEventListener'),
+                                removeEventListener: makeNative(function() {}, 'removeEventListener'),
+                                dispatchEvent: makeNative(function() { return false; }, 'dispatchEvent')
+                            };
+                        }
+                        return result;
+                    }, 'matchMedia');
+
+                    // CSS.supports - limit fingerprinting surface
+                    if (window.CSS && CSS.supports) {
+                        const originalSupports = CSS.supports;
+                        CSS.supports = makeNative(function(prop, val) {
+                            // Allow normal checks but normalize some edge cases
+                            return originalSupports.apply(CSS, arguments);
+                        }, 'supports');
+                    }
+                } catch(e) {}
+
+                // ===== FONT ENUMERATION PROTECTION =====
+                try {
+                    // Common Android fonts - limit to common subset
+                    const allowedFonts = [
+                        'Roboto', 'sans-serif', 'serif', 'monospace',
+                        'Arial', 'Helvetica', 'Times New Roman', 'Courier New',
+                        'Droid Sans', 'Noto Sans', 'Noto Serif'
+                    ];
+                    
+                    // Intercept font loading API
+                    if (document.fonts && document.fonts.check) {
+                        const originalCheck = document.fonts.check.bind(document.fonts);
+                        document.fonts.check = makeNative(function(font, text) {
+                            // Extract font family from font string (e.g., "12px Arial")
+                            const fontFamily = font.split(' ').slice(1).join(' ').replace(/["']/g, '');
+                            
+                            // Only allow whitelisted fonts
+                            const isAllowed = allowedFonts.some(f => 
+                                fontFamily.toLowerCase().includes(f.toLowerCase())
+                            );
+                            
+                            if (!isAllowed) {
+                                reportSuspicion(5, 'Font Probe: ' + fontFamily);
+                                return false; // Claim font not available
+                            }
+                            return originalCheck(font, text);
+                        }, 'check');
+                    }
+
+                    // Limit fonts.forEach / iterate
+                    if (document.fonts) {
+                        document.fonts.forEach = makeNative(function(callback) {
+                            // Don't iterate - prevents enumeration
+                            reportSuspicion(15, 'Font Enumeration');
+                        }, 'forEach');
+                    }
+                } catch(e) {}
+
+                // ===== ERROR STACK TRACE SANITIZATION =====
+                try {
+                    const originalPrepareStackTrace = Error.prepareStackTrace;
+                    const sanitizeStack = (stack) => {
+                        if (!stack) return stack;
+                        // Remove internal paths that leak device info
+                        return stack
+                            .replace(/file:\/\/\/data\/[^\s]+/g, 'file:///app/script.js')
+                            .replace(/chrome-extension:\/\/[^\s]+/g, '')
+                            .replace(/at\s+[A-Za-z]+\s+\(native\)/g, '')
+                            .replace(/\/storage\/emulated\/[^\s]+/g, '/app/');
+                    };
+
+                    // Override Error.prototype.stack getter
+                    const originalStackDescriptor = Object.getOwnPropertyDescriptor(Error.prototype, 'stack');
+                    if (originalStackDescriptor && originalStackDescriptor.get) {
+                        Object.defineProperty(Error.prototype, 'stack', {
+                            get: makeNative(function() {
+                                const stack = originalStackDescriptor.get.call(this);
+                                return sanitizeStack(stack);
+                            }, 'get stack'),
+                            set: originalStackDescriptor.set,
+                            configurable: true
+                        });
+                    }
+                } catch(e) {}
+
+                // ===== ENHANCED AUDIOCONTEXT FINGERPRINTING =====
+                try {
+                    if (window.AudioContext || window.webkitAudioContext) {
+                        const AC = window.AudioContext || window.webkitAudioContext;
+                        
+                        // Intercept createOscillator
+                        const originalCreateOscillator = AC.prototype.createOscillator;
+                        AC.prototype.createOscillator = makeNative(function() {
+                            const osc = originalCreateOscillator.call(this);
+                            // Add micro-jitter to frequency
+                            const originalFreqSet = Object.getOwnPropertyDescriptor(osc.frequency, 'value');
+                            if (originalFreqSet && originalFreqSet.set) {
+                                Object.defineProperty(osc.frequency, 'value', {
+                                    get: originalFreqSet.get,
+                                    set: function(v) {
+                                        // Add persona-seeded micro-jitter
+                                        const jitter = (prng() - 0.5) * 0.001;
+                                        originalFreqSet.set.call(this, v + jitter);
+                                    },
+                                    configurable: true
+                                });
+                            }
+                            return osc;
+                        }, 'createOscillator');
+
+                        // Intercept createAnalyser for getByteFrequencyData
+                        const originalCreateAnalyser = AC.prototype.createAnalyser;
+                        AC.prototype.createAnalyser = makeNative(function() {
+                            const analyser = originalCreateAnalyser.call(this);
+                            
+                            // Noise getFloatFrequencyData
+                            const originalGetFloatFrequencyData = analyser.getFloatFrequencyData;
+                            analyser.getFloatFrequencyData = makeNative(function(array) {
+                                originalGetFloatFrequencyData.call(this, array);
+                                // Add consistent persona-seeded noise
+                                for (let i = 0; i < array.length; i++) {
+                                    array[i] += (prng() - 0.5) * 0.0001;
+                                }
+                            }, 'getFloatFrequencyData');
+
+                            // Noise getByteFrequencyData
+                            const originalGetByteFrequencyData = analyser.getByteFrequencyData;
+                            analyser.getByteFrequencyData = makeNative(function(array) {
+                                originalGetByteFrequencyData.call(this, array);
+                                // Add subtle noise
+                                for (let i = 0; i < array.length; i += 8) {
+                                    if (prng() > 0.95) {
+                                        array[i] = Math.max(0, Math.min(255, array[i] + (prng() > 0.5 ? 1 : -1)));
+                                    }
+                                }
+                            }, 'getByteFrequencyData');
+
+                            return analyser;
+                        }, 'createAnalyser');
+
+                        // Intercept getChannelData
+                        const originalCreateBuffer = AC.prototype.createBuffer;
+                        AC.prototype.createBuffer = makeNative(function(numChannels, length, sampleRate) {
+                            const buffer = originalCreateBuffer.call(this, numChannels, length, sampleRate);
+                            const originalGetChannelData = buffer.getChannelData;
+                            buffer.getChannelData = makeNative(function(channel) {
+                                const data = originalGetChannelData.call(this, channel);
+                                // Add imperceptible noise
+                                for (let i = 0; i < data.length; i += 128) {
+                                    if (prng() > 0.99) {
+                                        data[i] += (prng() - 0.5) * 0.0000001;
+                                    }
+                                }
+                                return data;
+                            }, 'getChannelData');
+                            return buffer;
+                        }, 'createBuffer');
                     }
                 } catch(e) {}
 
             })();
         """.trimIndent()
+    }
+
+    /**
+     * Bridge for receiving telemetry from WebView
+     */
+    class PrivacyBridge {
+        @JavascriptInterface
+        fun reportSuspicion(points: Int, reason: String) {
+            SuspicionScorer.reportSuspiciousActivity(points)
+        }
     }
 }

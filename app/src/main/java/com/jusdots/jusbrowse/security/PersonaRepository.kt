@@ -19,8 +19,9 @@ object PersonaRepository {
             FakePersona.BrandVersion("Chromium", "145"),
             FakePersona.BrandVersion("Google Chrome", "145")
         ),
-        platform = "Android",
         platformVersion = "14",
+        platform = "Android",
+        platformString = "Linux aarch64",
         model = "Pixel 8 Pro",
         mobile = true,
         headers = mapOf(
@@ -34,8 +35,8 @@ object PersonaRepository {
         pixelRatio = 3.0,
         cpuCores = 8,
         ramGB = 12,
-        videoCardRenderer = "Mali-G715",
-        videoCardVendor = "Google",
+        videoCardRenderer = "Mali-G715 MC7",
+        videoCardVendor = "ARM",
         noiseSeed = 1001L,
         locale = "en-US",
         languages = listOf("en-US", "en"),
@@ -66,8 +67,9 @@ object PersonaRepository {
             FakePersona.BrandVersion("Chromium", "145"),
             FakePersona.BrandVersion("Google Chrome", "145")
         ),
-        platform = "Android",
         platformVersion = "14",
+        platform = "Android",
+        platformString = "Linux aarch64",
         model = "Pixel 7a",
         mobile = true,
         headers = mapOf(
@@ -81,8 +83,8 @@ object PersonaRepository {
         pixelRatio = 2.625, // Reports 411.4 -> 411
         cpuCores = 8,
         ramGB = 8,
-        videoCardRenderer = "Mali-G710",
-        videoCardVendor = "Google",
+        videoCardRenderer = "Mali-G710 MP7",
+        videoCardVendor = "ARM",
         noiseSeed = 1002L,
         locale = "en-US",
         languages = listOf("en-US", "en"),
@@ -111,8 +113,9 @@ object PersonaRepository {
             FakePersona.BrandVersion("Chromium", "145"),
             FakePersona.BrandVersion("Google Chrome", "145")
         ),
-        platform = "Android",
         platformVersion = "14",
+        platform = "Android",
+        platformString = "Linux aarch64",
         model = "SM-S928B",
         mobile = true,
         headers = mapOf(
@@ -155,8 +158,9 @@ object PersonaRepository {
             FakePersona.BrandVersion("Chromium", "145"),
             FakePersona.BrandVersion("Google Chrome", "145")
         ),
-        platform = "Android",
         platformVersion = "13",
+        platform = "Android",
+        platformString = "Linux aarch64",
         model = "SM-A546B",
         mobile = true,
         headers = mapOf(
@@ -170,8 +174,8 @@ object PersonaRepository {
         pixelRatio = 3.0, // 360x800 - EXTREMELY COMMON BUCKET
         cpuCores = 8,
         ramGB = 6,
-        videoCardRenderer = "Mali-G68",
-        videoCardVendor = "Samsung",
+        videoCardRenderer = "Mali-G68 MP5",
+        videoCardVendor = "ARM",
         noiseSeed = 2002L,
         locale = "en-GB",
         languages = listOf("en-GB", "en"),
@@ -199,8 +203,9 @@ object PersonaRepository {
             FakePersona.BrandVersion("Chromium", "145"),
             FakePersona.BrandVersion("Google Chrome", "145")
         ),
-        platform = "Android",
         platformVersion = "14",
+        platform = "Android",
+        platformString = "Linux aarch64",
         model = "23116PN5BC",
         mobile = true,
         headers = mapOf(
@@ -242,8 +247,9 @@ object PersonaRepository {
             FakePersona.BrandVersion("Chromium", "145"),
             FakePersona.BrandVersion("Google Chrome", "145")
         ),
-        platform = "Android",
         platformVersion = "13",
+        platform = "Android",
+        platformString = "Linux aarch64",
         model = "23124RA7EO",
         mobile = true,
         headers = mapOf(
@@ -285,8 +291,9 @@ object PersonaRepository {
             FakePersona.BrandVersion("Chromium", "145"),
             FakePersona.BrandVersion("Google Chrome", "145")
         ),
-        platform = "Android",
         platformVersion = "14",
+        platform = "Android",
+        platformString = "Linux aarch64",
         model = "Moto Edge 50 Ultra",
         mobile = true,
         headers = mapOf(
@@ -328,8 +335,9 @@ object PersonaRepository {
             FakePersona.BrandVersion("Chromium", "145"),
             FakePersona.BrandVersion("Google Chrome", "145")
         ),
-        platform = "Android",
         platformVersion = "14",
+        platform = "Android",
+        platformString = "Linux aarch64",
         model = "Moto G54",
         mobile = true,
         headers = mapOf(
@@ -359,11 +367,49 @@ object PersonaRepository {
         fontJitterSeed = 401L
     )
 
+    // DISABLED: iPhone 15 Pro - Android WebView cannot emulate Safari.
+    // Cross-API consistency checks will always fail (Safari-specific behavior,
+    // WebKit rendering differences, no Client Hints support).
+    // Keeping definition for reference only.
+    /*
+    private val IPHONE_15_PRO = FakePersona(
+        id = "iphone_15_pro",
+        groupId = "apple",
+        isFlagship = true,
+        displayName = "iPhone 15 Pro (Flagship)",
+        flagEmoji = "🇺🇸",
+        userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        brands = emptyList(),
+        platformVersion = "17.0",
+        platform = "iOS",
+        platformString = "iPhone",
+        model = "iPhone 15 Pro",
+        mobile = true,
+        headers = mapOf(
+            "Accept-Language" to "en-US,en;q=0.9",
+        ),
+        screenWidth = 1179,
+        screenHeight = 2556,
+        pixelRatio = 3.0,
+        cpuCores = 6,
+        ramGB = 8,
+        videoCardRenderer = "Apple GPU",
+        videoCardVendor = "Apple Inc.",
+        noiseSeed = 5001L,
+        locale = "en-US",
+        languages = listOf("en-US", "en"),
+        timezone = "America/Los_Angeles",
+        audioBaseLatency = 0.005,
+        fontJitterSeed = 501L
+    )
+    */
+
     val GOLDEN_PROFILES = listOf(
         PIXEL_8_PRO, PIXEL_7A,
         GALAXY_S24_ULTRA, GALAXY_A54,
         XIAOMI_14_PRO, REDMI_NOTE_13,
         MOTO_EDGE_50_ULTRA, MOTO_G54
+        // IPHONE_15_PRO removed - cannot emulate iOS from Android WebView
     )
 
     fun getPersonaById(id: String): FakePersona? {
