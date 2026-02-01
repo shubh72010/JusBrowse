@@ -543,6 +543,36 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // ============ NEW UI CUSTOMIZATION PREFERENCES ============
+    val follianMode = preferencesRepository.follianMode
+    val toolbarPosition = preferencesRepository.toolbarPosition
+    val compactMode = preferencesRepository.compactMode
+    val addressBarStyle = preferencesRepository.addressBarStyle
+
+    fun setFollianMode(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setFollianMode(enabled)
+        }
+    }
+
+    fun setToolbarPosition(position: String) {
+        viewModelScope.launch {
+            preferencesRepository.setToolbarPosition(position)
+        }
+    }
+
+    fun setCompactMode(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setCompactMode(enabled)
+        }
+    }
+
+    fun setAddressBarStyle(style: String) {
+        viewModelScope.launch {
+            preferencesRepository.setAddressBarStyle(style)
+        }
+    }
+
     // Site Settings
     fun updateSiteSettings(settings: com.jusdots.jusbrowse.data.models.SiteSettings) {
         viewModelScope.launch {

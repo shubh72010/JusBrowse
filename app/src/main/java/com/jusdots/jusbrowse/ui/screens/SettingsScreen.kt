@@ -47,6 +47,7 @@ fun SettingsScreen(
     val showTabIcons by viewModel.showTabIcons.collectAsStateWithLifecycle(initialValue = false)
     val vtApiKey by viewModel.virusTotalApiKey.collectAsStateWithLifecycle(initialValue = "")
     val koodousApiKey by viewModel.koodousApiKey.collectAsStateWithLifecycle(initialValue = "")
+    val follianMode by viewModel.follianMode.collectAsStateWithLifecycle(initialValue = false)
     
     // Fake Mode state
     val fakeModeEnabled by FakeModeManager.isEnabled.collectAsStateWithLifecycle()
@@ -249,6 +250,14 @@ fun SettingsScreen(
                 onCheckedChange = { viewModel.setCookieBlockerEnabled(it) }
             )
 
+            // 🚫 Follian Mode - Hard JS Kill
+            SettingsSwitch(
+                title = "Follian Mode (JS Off)",
+                subtitle = "⚠️ Hard JavaScript kill - sites WILL break",
+                checked = follianMode,
+                onCheckedChange = { viewModel.setFollianMode(it) }
+            )
+
             HorizontalDivider()
 
             // Appearance
@@ -281,28 +290,6 @@ fun SettingsScreen(
                 }
             }
 
-
-
-            Text(
-                text = "Theme Preset",
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-
-            androidx.compose.foundation.lazy.LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(com.jusdots.jusbrowse.ui.theme.BrowserTheme.values().size) { index ->
-                    val theme = com.jusdots.jusbrowse.ui.theme.BrowserTheme.values()[index]
-                    ThemePreviewItem(
-                        theme = theme,
-                        isSelected = themePreset == theme.name,
-                        onClick = { viewModel.setThemePreset(theme.name) }
-                    )
-                }
-            }
 
             SettingsSwitch(
                 title = "Dark Mode",
@@ -401,7 +388,15 @@ fun ThemePreviewItem(
         com.jusdots.jusbrowse.ui.theme.BrowserTheme.FOREST_GREEN -> Color(0xFF388E3C)
         com.jusdots.jusbrowse.ui.theme.BrowserTheme.MIDNIGHT_PURPLE -> Color(0xFF7B1FA2)
         com.jusdots.jusbrowse.ui.theme.BrowserTheme.SUNSET_ORANGE -> Color(0xFFF57C00)
+        com.jusdots.jusbrowse.ui.theme.BrowserTheme.ABYSS_BLACK -> Color(0xFF000000)
+        com.jusdots.jusbrowse.ui.theme.BrowserTheme.NORD_ICE -> Color(0xFF5E81AC)
+        com.jusdots.jusbrowse.ui.theme.BrowserTheme.DRACULA -> Color(0xFFBD93F9)
+        com.jusdots.jusbrowse.ui.theme.BrowserTheme.SOLARIZED -> Color(0xFF268BD2)
+        com.jusdots.jusbrowse.ui.theme.BrowserTheme.CYBERPUNK -> Color(0xFFFF00FF)
+        com.jusdots.jusbrowse.ui.theme.BrowserTheme.MINT_FRESH -> Color(0xFF00BFA5)
+        com.jusdots.jusbrowse.ui.theme.BrowserTheme.ROSE_GOLD -> Color(0xFFB76E79)
         com.jusdots.jusbrowse.ui.theme.BrowserTheme.SYSTEM -> MaterialTheme.colorScheme.primary
+        com.jusdots.jusbrowse.ui.theme.BrowserTheme.MATERIAL_YOU -> Color(0xFF6750A4) // Material You purple
     }
 
     Column(

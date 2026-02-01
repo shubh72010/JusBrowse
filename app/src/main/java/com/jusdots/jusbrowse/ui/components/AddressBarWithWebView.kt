@@ -49,19 +49,29 @@ fun AddressBarWithWebView(
     val searchEngine by viewModel.searchEngine.collectAsStateWithLifecycle(initialValue = "DuckDuckGo")
     val adBlockEnabled by viewModel.adBlockEnabled.collectAsStateWithLifecycle(initialValue = true)
     val httpsOnly by viewModel.httpsOnly.collectAsStateWithLifecycle(initialValue = false)
+    val follianMode by viewModel.follianMode.collectAsStateWithLifecycle(initialValue = false)
+    val javascriptEnabled by viewModel.javascriptEnabled.collectAsStateWithLifecycle(initialValue = true)
     
-    // Local state for the address bar text - initialized with current URL
-    // CRITICAL: Observe current tab's URL specifically, not the global flow
-    var urlText by remember(tab?.url) { mutableStateOf(tab?.url?.replace("about:blank", "") ?: "") }
-    
-    val focusManager = LocalFocusManager.current
-    var isDragging by remember { mutableStateOf(false) }
+    // ... (local state setup) ...
 
-    // Download warning dialog state
-    var showDownloadWarning by remember { mutableStateOf(false) }
-    var pendingDownloadInfo by remember { mutableStateOf<com.jusdots.jusbrowse.security.DownloadValidator.DownloadValidationResult?>(null) }
-    var pendingDownloadUrl by remember { mutableStateOf("") }
-    val context = LocalContext.current
+                         },
+                         update = { webView ->
+                             // DYNAMIC FOLLIAN MODE & JS TOGGLE
+                             if (follianMode) {
+                                 com.jusdots.jusbrowse.security.FollianBlocker.applyToWebView(webView)
+                             } else {
+                                 // Restore JS if Follian Mode was just turned off
+                                 // Only enable if global setting says so
+                                 if (!webView.settings.javaScriptEnabled && javascriptEnabled) {
+                                     com.jusdots.jusbrowse.security.FollianBlocker.removeFromWebView(webView)
+                                 } else if (webView.settings.javaScriptEnabled != javascriptEnabled) {
+                                     // Sync with global preference
+                                     webView.settings.javaScriptEnabled = javascriptEnabled
+                                 }
+                             }
+
+                             // DYNAMIC PERSONA UPDATE
+                             val fakeModeUA = com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent()
     
     Box(modifier = modifier) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -191,7 +201,13 @@ fun AddressBarWithWebView(
                              // State Partitioning: Apply isolated profile
                              com.jusdots.jusbrowse.security.ContainerManager.applyContainer(this, tab.containerId ?: "default")
                              
-                             settings.javaScriptEnabled = true
+                             // Follian Mode - Hard JavaScript Kill
+                             if (follianMode) {
+                                 com.jusdots.jusbrowse.security.FollianBlocker.applyToWebView(this)
+                             } else {
+                                 settings.javaScriptEnabled = true
+                             }
+                             
                              settings.domStorageEnabled = true
                              addJavascriptInterface(com.jusdots.jusbrowse.security.FakeModeManager.PrivacyBridge(), "jusPrivacyBridge")
                              

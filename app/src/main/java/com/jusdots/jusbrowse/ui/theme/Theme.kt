@@ -38,11 +38,29 @@ fun JusBrowse2Theme(
     }
 
     val colorScheme = when (preset) {
+        BrowserTheme.MATERIAL_YOU -> {
+            // Material You dynamic colors (Android 12+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val context = LocalContext.current
+                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            } else {
+                // Fallback for older Android versions
+                if (darkTheme) DarkColorScheme else LightColorScheme
+            }
+        }
         BrowserTheme.VIVALDI_RED -> if (darkTheme) VivaldiRedDark else VivaldiRedLight
         BrowserTheme.OCEAN_BLUE -> if (darkTheme) OceanBlueDark else OceanBlueLight
         BrowserTheme.FOREST_GREEN -> if (darkTheme) ForestGreenDark else ForestGreenLight
         BrowserTheme.MIDNIGHT_PURPLE -> if (darkTheme) MidnightPurpleDark else MidnightPurpleLight
         BrowserTheme.SUNSET_ORANGE -> if (darkTheme) SunsetOrangeDark else SunsetOrangeLight
+        // New themes
+        BrowserTheme.ABYSS_BLACK -> if (darkTheme) AbyssBlackDark else AbyssBlackLight
+        BrowserTheme.NORD_ICE -> if (darkTheme) NordIceDark else NordIceLight
+        BrowserTheme.DRACULA -> if (darkTheme) DraculaDark else DraculaLight
+        BrowserTheme.SOLARIZED -> if (darkTheme) SolarizedDark else SolarizedLight
+        BrowserTheme.CYBERPUNK -> if (darkTheme) CyberpunkDark else CyberpunkLight
+        BrowserTheme.MINT_FRESH -> if (darkTheme) MintFreshDark else MintFreshLight
+        BrowserTheme.ROSE_GOLD -> if (darkTheme) RoseGoldDark else RoseGoldLight
         BrowserTheme.SYSTEM -> {
             when {
                 dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {

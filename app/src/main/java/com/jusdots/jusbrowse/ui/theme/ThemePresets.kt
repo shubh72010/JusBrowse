@@ -6,11 +6,20 @@ import androidx.compose.ui.graphics.Color
 
 enum class BrowserTheme {
     SYSTEM,
+    MATERIAL_YOU,  // Dynamic color from wallpaper (Android 12+)
     VIVALDI_RED,
     OCEAN_BLUE,
     FOREST_GREEN,
     MIDNIGHT_PURPLE,
-    SUNSET_ORANGE
+    SUNSET_ORANGE,
+    // New themes
+    ABYSS_BLACK,
+    NORD_ICE,
+    DRACULA,
+    SOLARIZED,
+    CYBERPUNK,
+    MINT_FRESH,
+    ROSE_GOLD
 }
 
 // Vivaldi Red
@@ -93,3 +102,118 @@ val SunsetOrangeDark = darkColorScheme(
     background = Color(0xFF3E2723),
     surface = Color(0xFF4E342E)
 )
+
+// ============ NEW THEMES ============
+
+// Abyss Black - True AMOLED Black
+val AbyssBlackLight = lightColorScheme(
+    primary = Color(0xFF212121),
+    onPrimary = Color.White,
+    secondary = Color(0xFF424242),
+    background = Color(0xFFFAFAFA),
+    surface = Color.White
+)
+val AbyssBlackDark = darkColorScheme(
+    primary = Color(0xFFBDBDBD),
+    onPrimary = Color.Black,
+    secondary = Color(0xFF757575),
+    background = Color(0xFF000000), // True black
+    surface = Color(0xFF121212)
+)
+
+// Nord Ice - Cool Nordic Palette
+val NordIceLight = lightColorScheme(
+    primary = Color(0xFF5E81AC),
+    onPrimary = Color.White,
+    secondary = Color(0xFF81A1C1),
+    background = Color(0xFFECEFF4),
+    surface = Color(0xFFE5E9F0)
+)
+val NordIceDark = darkColorScheme(
+    primary = Color(0xFF88C0D0),
+    onPrimary = Color(0xFF2E3440),
+    secondary = Color(0xFF81A1C1),
+    background = Color(0xFF2E3440),
+    surface = Color(0xFF3B4252)
+)
+
+// Dracula - Classic Hacker Theme
+val DraculaLight = lightColorScheme(
+    primary = Color(0xFFBD93F9),
+    onPrimary = Color(0xFF282A36),
+    secondary = Color(0xFFFF79C6),
+    background = Color(0xFFF8F8F2),
+    surface = Color.White
+)
+val DraculaDark = darkColorScheme(
+    primary = Color(0xFFBD93F9),
+    onPrimary = Color(0xFF282A36),
+    secondary = Color(0xFFFF79C6),
+    background = Color(0xFF282A36),
+    surface = Color(0xFF44475A)
+)
+
+// Solarized
+val SolarizedLight = lightColorScheme(
+    primary = Color(0xFF268BD2),
+    onPrimary = Color(0xFFFDF6E3),
+    secondary = Color(0xFF2AA198),
+    background = Color(0xFFFDF6E3),
+    surface = Color(0xFFEEE8D5)
+)
+val SolarizedDark = darkColorScheme(
+    primary = Color(0xFF268BD2),
+    onPrimary = Color(0xFF002B36),
+    secondary = Color(0xFF2AA198),
+    background = Color(0xFF002B36),
+    surface = Color(0xFF073642)
+)
+
+// Cyberpunk - Neon Future
+val CyberpunkLight = lightColorScheme(
+    primary = Color(0xFFFF00FF),
+    onPrimary = Color.Black,
+    secondary = Color(0xFFFFFF00),
+    background = Color(0xFFF5F5F5),
+    surface = Color.White
+)
+val CyberpunkDark = darkColorScheme(
+    primary = Color(0xFFFF00FF),
+    onPrimary = Color.Black,
+    secondary = Color(0xFFFFFF00),
+    background = Color(0xFF0D0D0D),
+    surface = Color(0xFF1A1A2E)
+)
+
+// Mint Fresh - Clean Green
+val MintFreshLight = lightColorScheme(
+    primary = Color(0xFF00BFA5),
+    onPrimary = Color.White,
+    secondary = Color(0xFF1DE9B6),
+    background = Color(0xFFE0F2F1),
+    surface = Color.White
+)
+val MintFreshDark = darkColorScheme(
+    primary = Color(0xFF64FFDA),
+    onPrimary = Color(0xFF003D33),
+    secondary = Color(0xFF1DE9B6),
+    background = Color(0xFF004D40),
+    surface = Color(0xFF00695C)
+)
+
+// Rose Gold - Warm Elegant
+val RoseGoldLight = lightColorScheme(
+    primary = Color(0xFFB76E79),
+    onPrimary = Color.White,
+    secondary = Color(0xFFD4A5A5),
+    background = Color(0xFFFFF0F0),
+    surface = Color.White
+)
+val RoseGoldDark = darkColorScheme(
+    primary = Color(0xFFE8B4B8),
+    onPrimary = Color(0xFF3D2B2B),
+    secondary = Color(0xFFD4A5A5),
+    background = Color(0xFF2D1F1F),
+    surface = Color(0xFF3D2B2B)
+)
+

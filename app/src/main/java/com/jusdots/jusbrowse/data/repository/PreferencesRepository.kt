@@ -32,6 +32,11 @@ class PreferencesRepository(private val context: Context) {
         val THEME_PRESET = stringPreferencesKey("theme_preset")
         val VIRUSTOTAL_API_KEY = stringPreferencesKey("virustotal_api_key")
         val KOODOUS_API_KEY = stringPreferencesKey("koodous_api_key")
+        // New UI customization preferences
+        val FOLLIAN_MODE = booleanPreferencesKey("follian_mode")
+        val TOOLBAR_POSITION = stringPreferencesKey("toolbar_position")
+        val COMPACT_MODE = booleanPreferencesKey("compact_mode")
+        val ADDRESS_BAR_STYLE = stringPreferencesKey("address_bar_style")
     }
 
     val searchEngine: Flow<String> = context.dataStore.data.map { preferences ->
@@ -191,6 +196,48 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setKoodousApiKey(key: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.KOODOUS_API_KEY] = key
+        }
+    }
+
+    // ============ NEW UI CUSTOMIZATION PREFERENCES ============
+
+    val follianMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.FOLLIAN_MODE] ?: false
+    }
+
+    val toolbarPosition: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.TOOLBAR_POSITION] ?: "TOP"
+    }
+
+    val compactMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.COMPACT_MODE] ?: false
+    }
+
+    val addressBarStyle: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.ADDRESS_BAR_STYLE] ?: "ROUNDED"
+    }
+
+    suspend fun setFollianMode(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.FOLLIAN_MODE] = enabled
+        }
+    }
+
+    suspend fun setToolbarPosition(position: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.TOOLBAR_POSITION] = position
+        }
+    }
+
+    suspend fun setCompactMode(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.COMPACT_MODE] = enabled
+        }
+    }
+
+    suspend fun setAddressBarStyle(style: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.ADDRESS_BAR_STYLE] = style
         }
     }
 }
