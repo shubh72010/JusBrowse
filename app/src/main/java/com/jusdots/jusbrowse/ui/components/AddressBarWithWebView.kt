@@ -50,28 +50,19 @@ fun AddressBarWithWebView(
     val adBlockEnabled by viewModel.adBlockEnabled.collectAsStateWithLifecycle(initialValue = true)
     val httpsOnly by viewModel.httpsOnly.collectAsStateWithLifecycle(initialValue = false)
     val follianMode by viewModel.follianMode.collectAsStateWithLifecycle(initialValue = false)
-    val javascriptEnabled by viewModel.javascriptEnabled.collectAsStateWithLifecycle(initialValue = true)
     
-    // ... (local state setup) ...
+    // Local state for the address bar text - initialized with current URL
+    // CRITICAL: Observe current tab's URL specifically, not the global flow
+    var urlText by remember(tab?.url) { mutableStateOf(tab?.url?.replace("about:blank", "") ?: "") }
+    
+    val focusManager = LocalFocusManager.current
+    var isDragging by remember { mutableStateOf(false) }
 
-                         },
-                         update = { webView ->
-                             // DYNAMIC FOLLIAN MODE & JS TOGGLE
-                             if (follianMode) {
-                                 com.jusdots.jusbrowse.security.FollianBlocker.applyToWebView(webView)
-                             } else {
-                                 // Restore JS if Follian Mode was just turned off
-                                 // Only enable if global setting says so
-                                 if (!webView.settings.javaScriptEnabled && javascriptEnabled) {
-                                     com.jusdots.jusbrowse.security.FollianBlocker.removeFromWebView(webView)
-                                 } else if (webView.settings.javaScriptEnabled != javascriptEnabled) {
-                                     // Sync with global preference
-                                     webView.settings.javaScriptEnabled = javascriptEnabled
-                                 }
-                             }
-
-                             // DYNAMIC PERSONA UPDATE
-                             val fakeModeUA = com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent()
+    // Download warning dialog state
+    var showDownloadWarning by remember { mutableStateOf(false) }
+    var pendingDownloadInfo by remember { mutableStateOf<com.jusdots.jusbrowse.security.DownloadValidator.DownloadValidationResult?>(null) }
+    var pendingDownloadUrl by remember { mutableStateOf("") }
+    val context = LocalContext.current
     
     Box(modifier = modifier) {
         Column(modifier = Modifier.fillMaxSize()) {
