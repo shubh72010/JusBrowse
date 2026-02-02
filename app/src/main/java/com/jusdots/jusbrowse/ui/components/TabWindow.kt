@@ -20,7 +20,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.VpnKey
+import com.google.gson.Gson
+import com.jusdots.jusbrowse.utils.MediaExtractor
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -79,6 +82,8 @@ fun TabWindow(
     val httpsOnly by viewModel.httpsOnly.collectAsStateWithLifecycle(initialValue = false)
     val doNotTrackEnabled by viewModel.doNotTrackEnabled.collectAsStateWithLifecycle(initialValue = false)
     val cookieBlockerEnabled by viewModel.cookieBlockerEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val popupBlockerEnabled by viewModel.popupBlockerEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val bottomAddressBarEnabled by viewModel.bottomAddressBarEnabled.collectAsStateWithLifecycle(initialValue = false)
     
     // Fake Mode state
     val fakeModeEnabled by FakeModeManager.isEnabled.collectAsStateWithLifecycle()
@@ -109,6 +114,9 @@ fun TabWindow(
     var isDragging by remember { mutableStateOf(false) }
     var isHoveringDropZone by remember { mutableStateOf(false) }
     var boxSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+
+    // Airlock States (Moved to BrowserScreen global handling)
+    var showMenu by remember { mutableStateOf(false) }
 
     // Sync back to ViewModel occasionally or on end
     LaunchedEffect(offsetX, offsetY) {
@@ -146,12 +154,13 @@ fun TabWindow(
             onConfirm = {
                 // Proceed with download
                 if (pendingDownloadInfo!!.isAllowed) {
-                    startDownload(context, pendingDownloadUrl, pendingDownloadInfo!!.fileName)
+                    val id = startDownload(context, pendingDownloadUrl, pendingDownloadInfo!!.fileName)
                     viewModel.addDownload(
                         fileName = pendingDownloadInfo!!.fileName,
                         url = pendingDownloadUrl,
                         filePath = Environment.DIRECTORY_DOWNLOADS + "/" + pendingDownloadInfo!!.fileName,
-                        fileSize = 0
+                        fileSize = 0,
+                        systemDownloadId = id
                     )
                 }
                 showDownloadWarning = false
@@ -227,7 +236,16 @@ fun TabWindow(
                 showContextMenu = false
             },
             onDownloadImage = { url ->
-                startDownload(context, url, android.webkit.URLUtil.guessFileName(url, null, null))
+                val fileName = android.webkit.URLUtil.guessFileName(url, null, null)
+                val id = startDownload(context, url, fileName)
+                // Track context menu downloads too!
+                viewModel.addDownload(
+                    fileName = fileName,
+                    url = url,
+                    filePath = Environment.DIRECTORY_DOWNLOADS + "/" + fileName,
+                    fileSize = 0,
+                    systemDownloadId = id
+                )
                 showContextMenu = false
             },
             onShareImage = { url ->
@@ -315,82 +333,119 @@ fun TabWindow(
                 }
             }
 
-            // In-Window Navigation Controls (Address Bar + Nav Buttons + Security Indicators)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(4.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-                    .padding(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Back
-                IconButton(
-                    onClick = {
-                        viewModel.getWebView(tab.id)?.goBack()
-                    },
-                    modifier = Modifier.size(32.dp),
-                    enabled = tab.canGoBack
-                ) {
-                    Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(16.dp))
-                }
-
-                // Forward
-                IconButton(
-                    onClick = {
-                        viewModel.getWebView(tab.id)?.goForward()
-                    },
-                    modifier = Modifier.size(32.dp),
-                    enabled = tab.canGoForward
-                ) {
-                    Icon(Icons.Default.ArrowForward, "Forward", modifier = Modifier.size(16.dp))
-                }
-                
-                // Security Lock Icon (Layer 10)
-                SecurityLockIcon(
-                    url = tab.url,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-
-                // Compact Address Bar
-                var text by remember(tab.url) { mutableStateOf(tab.url.replace("about:blank", "")) }
-                TextField(
-                    value = text,
-                    onValueChange = { text = it },
+            if (!bottomAddressBarEnabled) {
+                // In-Window Navigation Controls (Address Bar + Nav Buttons + Security Indicators)
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp),
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall,
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent
-                    ),
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Go
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onGo = {
-                             if (text.isNotEmpty()) {
-                                if (viewModel.isUrlQuery(text)) {
-                                    val searchUrl = viewModel.getSearchUrl(text, searchEngine)
-                                    viewModel.navigateToUrlByTabId(tab.id, searchUrl)
-                                } else {
-                                    viewModel.navigateToUrlByTabId(tab.id, text)
-                                }
-                             }
-                        }
+                        .fillMaxWidth()
+                        .padding(4.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                        .padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Back
+                    IconButton(
+                        onClick = {
+                            viewModel.getWebView(tab.id)?.goBack()
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = tab.canGoBack
+                    ) {
+                        Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(16.dp))
+                    }
+
+                    // Forward
+                    IconButton(
+                        onClick = {
+                            viewModel.getWebView(tab.id)?.goForward()
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = tab.canGoForward
+                    ) {
+                        Icon(Icons.Default.ArrowForward, "Forward", modifier = Modifier.size(16.dp))
+                    }
+
+                    // Security Lock Icon (Layer 10)
+                    SecurityLockIcon(
+                        url = tab.url,
+                        modifier = Modifier.padding(horizontal = 4.dp)
                     )
-                )
-                
-                // JS Indicator (Layer 10)
-                val jsEnabled = siteSettings?.javascriptEnabled ?: true
-                JavaScriptIndicator(
-                    isEnabled = jsEnabled,
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
+
+                    // Compact Address Bar
+                    var text by remember(tab.url) { mutableStateOf(tab.url.replace("about:blank", "")) }
+                    TextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Go
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onGo = {
+                                if (text.isNotEmpty()) {
+                                    if (viewModel.isUrlQuery(text)) {
+                                        val searchUrl = viewModel.getSearchUrl(text, searchEngine)
+                                        viewModel.navigateToUrlByTabId(tab.id, searchUrl)
+                                    } else {
+                                        viewModel.navigateToUrlByTabId(tab.id, text)
+                                    }
+                                }
+                            }
+                        )
+                    )
+
+                    // JS Indicator (Layer 10)
+                    val jsEnabled = siteSettings?.javascriptEnabled ?: true
+                    JavaScriptIndicator(
+                        isEnabled = jsEnabled,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+
+                    // Menu Button
+                    Box {
+                        IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.MoreVert, "Menu", modifier = Modifier.size(20.dp))
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("📸 Airlock Gallery") },
+                                onClick = {
+                                    viewModel.getWebView(tab.id)?.evaluateJavascript(MediaExtractor.EXTRACT_MEDIA_SCRIPT) { result ->
+                                        if (result != null && result != "null") {
+                                            try {
+                                                // Unescape returned JSON string
+                                                val json = if (result.startsWith("\"") && result.endsWith("\"")) {
+                                                    result.substring(1, result.length - 1)
+                                                        .replace("\\\"", "\"")
+                                                        .replace("\\\\", "\\")
+                                                } else result
+
+                                                val data = Gson().fromJson(json, MediaData::class.java)
+                                                viewModel.openAirlockGallery(data)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        }
+                                    }
+                                    showMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
             
             // WebView Content
@@ -423,17 +478,24 @@ fun TabWindow(
                                     if (data != null && data.itemCount > 0) {
                                         val url = data.getItemAt(0).text.toString()
                                         if (url.startsWith("http")) {
-                                             val fileName = android.webkit.URLUtil.guessFileName(url, null, null)
-                                             // Actually start the download
-                                             startDownload(context, url, fileName)
-                                             // Then add to database for tracking
-                                             viewModel.addDownload(
-                                                fileName = fileName,
-                                                url = url,
-                                                filePath = Environment.DIRECTORY_DOWNLOADS + "/" + fileName,
-                                                fileSize = 0 // Unknown
+                                            // Validate download first!
+                                            val fileName = android.webkit.URLUtil.guessFileName(url, null, null)
+                                            val validation = DownloadValidator.validateDownload(
+                                                 url = url,
+                                                 userAgent = null, // Unknown for drag/drop
+                                                 contentDisposition = null,
+                                                 mimeType = null,
+                                                 contentLength = 0
                                             )
-                                            android.widget.Toast.makeText(context, "Download started: $fileName", android.widget.Toast.LENGTH_SHORT).show()
+
+                                            // Trigger the warning dialog flow
+                                            // This reuses the existing dialog logic in TabWindow
+                                            pendingDownloadUrl = url
+                                            pendingDownloadInfo = validation
+                                            showDownloadWarning = true
+                                            
+                                            // If it was just a drag re-entry, we shouldn't show a toast yet.
+                                            // The dialog handles the actual download start.
                                             return true
                                         }
                                     }
@@ -474,7 +536,7 @@ fun TabWindow(
                                      // State Partitioning: Apply isolated profile
                                      com.jusdots.jusbrowse.security.ContainerManager.applyContainer(this, tab.containerId ?: "default")
                                      
-                                     // CONTEXT MENU INTEGRATION
+                                     // CONTEXT MENU + AIRLOCK INTEGRATION
                                      setOnLongClickListener { view ->
                                          val hitTestResult = (view as WebView).hitTestResult
                                          when (hitTestResult.type) {
@@ -483,15 +545,25 @@ fun TabWindow(
                                              WebView.HitTestResult.IMAGE_TYPE -> {
                                                  val url = hitTestResult.extra
                                                  if (url != null) {
-                                                     // Start Drag and Drop
+                                                     // Check if it's a media file for Airlock
+                                                     val mimeType = getMimeType(url)
+                                                     if (mimeType.startsWith("image/") || 
+                                                         mimeType.startsWith("video/") || 
+                                                         mimeType.startsWith("audio/")) {
+                                                         // Open in Airlock - isolated viewing
+                                                         viewModel.openAirlockViewer(url, mimeType)
+                                                         
+                                                         
+                                                         return@setOnLongClickListener true
+                                                     }
+                                                     
+                                                     // Fallback: Start Drag and Drop for non-media
                                                      val clipData = ClipData.newPlainText("url", url)
                                                      val shadowBuilder = android.view.View.DragShadowBuilder(view)
                                                      
-                                                     // We need to allow local state updates to show overlay
                                                      isDragging = true
                                                      
                                                      try {
-                                                         // Start standard Drag and Drop
                                                          if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                                                              view.startDragAndDrop(clipData, shadowBuilder, null, android.view.View.DRAG_FLAG_GLOBAL)
                                                          } else {
@@ -515,7 +587,7 @@ fun TabWindow(
                                                          }
                                                      }
                                                      
-                                                     true // Consume event
+                                                     true
                                                  } else false
                                              }
                                              else -> false
@@ -547,7 +619,7 @@ fun TabWindow(
                                      settings.allowUniversalAccessFromFileURLs = false
                                      
                                      // Additional hardening
-                                     settings.setSupportMultipleWindows(false) // Block window.open abuse
+                                     settings.setSupportMultipleWindows(!popupBlockerEnabled) // Respect user preference
                                      settings.saveFormData = false // Don't save form data
                                      settings.setGeolocationEnabled(false) // Require explicit permission
                                      
@@ -739,6 +811,124 @@ fun TabWindow(
                      isHovering = isHoveringDropZone,
                      modifier = Modifier.align(Alignment.TopEnd)
                  )
+                 
+
+            }
+
+            // Bottom Address Bar (when enabled)
+            if (bottomAddressBarEnabled) {
+                // In-Window Navigation Controls (Address Bar + Nav Buttons + Security Indicators)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                        .padding(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Back
+                    IconButton(
+                        onClick = {
+                            viewModel.getWebView(tab.id)?.goBack()
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = tab.canGoBack
+                    ) {
+                        Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(16.dp))
+                    }
+
+                    // Forward
+                    IconButton(
+                        onClick = {
+                            viewModel.getWebView(tab.id)?.goForward()
+                        },
+                        modifier = Modifier.size(32.dp),
+                        enabled = tab.canGoForward
+                    ) {
+                        Icon(Icons.Default.ArrowForward, "Forward", modifier = Modifier.size(16.dp))
+                    }
+
+                    // Security Lock Icon (Layer 10)
+                    SecurityLockIcon(
+                        url = tab.url,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+
+                    // Compact Address Bar
+                    var text by remember(tab.url) { mutableStateOf(tab.url.replace("about:blank", "")) }
+                    TextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = androidx.compose.ui.text.input.ImeAction.Go
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onGo = {
+                                if (text.isNotEmpty()) {
+                                    if (viewModel.isUrlQuery(text)) {
+                                        val searchUrl = viewModel.getSearchUrl(text, searchEngine)
+                                        viewModel.navigateToUrlByTabId(tab.id, searchUrl)
+                                    } else {
+                                        viewModel.navigateToUrlByTabId(tab.id, text)
+                                    }
+                                }
+                            }
+                        )
+                    )
+
+                    // JS Indicator (Layer 10)
+                    val jsEnabled = siteSettings?.javascriptEnabled ?: true
+                    JavaScriptIndicator(
+                        isEnabled = jsEnabled,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+
+                    // Menu Button
+                    Box {
+                        IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.MoreVert, "Menu", modifier = Modifier.size(20.dp))
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("📸 Airlock Gallery") },
+                                onClick = {
+                                    viewModel.getWebView(tab.id)?.evaluateJavascript(MediaExtractor.EXTRACT_MEDIA_SCRIPT) { result ->
+                                        if (result != null && result != "null") {
+                                            try {
+                                                // Unescape returned JSON string
+                                                val json = if (result.startsWith("\"") && result.endsWith("\"")) {
+                                                    result.substring(1, result.length - 1)
+                                                        .replace("\\\"", "\"")
+                                                        .replace("\\\\", "\\")
+                                                } else result
+
+                                                val data = Gson().fromJson(json, MediaData::class.java)
+                                                viewModel.openAirlockGallery(data)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        }
+                                    }
+                                    showMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
         
@@ -763,8 +953,8 @@ fun TabWindow(
 /**
  * Helper function to start a download using DownloadManager
  */
-private fun startDownload(context: Context, url: String, fileName: String) {
-    try {
+private fun startDownload(context: Context, url: String, fileName: String): Long {
+    return try {
         val request = DownloadManager.Request(Uri.parse(url))
             .setTitle(fileName)
             .setDescription("Downloading...")
@@ -776,6 +966,25 @@ private fun startDownload(context: Context, url: String, fileName: String) {
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         downloadManager.enqueue(request)
     } catch (e: Exception) {
-        // Handle download error silently in release
+        // Handle download error silently in release or return -1
+        -1L
+    }
+}
+
+/**
+ * Helper function to determine MIME type from URL
+ * Used for Airlock media viewer routing
+ */
+private fun getMimeType(url: String): String {
+    return when {
+        url.matches(Regex(".*\\.(jpg|jpeg|png|gif|webp|svg|bmp)($|\\?.*)")) -> "image/*"
+        url.matches(Regex(".*\\.(mp4|webm|avi|mov|mkv|flv|m4v)($|\\?.*)")) -> "video/*"
+        url.matches(Regex(".*\\.(mp3|wav|ogg|flac|m4a|aac|wma)($|\\?.*)")) -> "audio/*"
+        else -> {
+            // Fallback to Android MimeTypeMap
+            val extension = url.substringAfterLast('.').substringBefore('?')
+            android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(extension) ?: "application/octet-stream"
+        }
     }
 }

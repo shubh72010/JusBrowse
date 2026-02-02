@@ -25,9 +25,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.CircleShape
+import coil.request.ImageRequest
 import com.jusdots.jusbrowse.security.FakeModeManager
 import com.jusdots.jusbrowse.security.PersonaPresets
 import com.jusdots.jusbrowse.ui.components.FakeModeDialog
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material.icons.filled.Image
+import coil.compose.AsyncImage
+
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,10 +54,13 @@ fun SettingsScreen(
     val flagSecureEnabled by viewModel.flagSecureEnabled.collectAsStateWithLifecycle(initialValue = true)
     val doNotTrackEnabled by viewModel.doNotTrackEnabled.collectAsStateWithLifecycle(initialValue = false)
     val cookieBlockerEnabled by viewModel.cookieBlockerEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val popupBlockerEnabled by viewModel.popupBlockerEnabled.collectAsStateWithLifecycle(initialValue = true)
     val showTabIcons by viewModel.showTabIcons.collectAsStateWithLifecycle(initialValue = false)
     val vtApiKey by viewModel.virusTotalApiKey.collectAsStateWithLifecycle(initialValue = "")
     val koodousApiKey by viewModel.koodousApiKey.collectAsStateWithLifecycle(initialValue = "")
     val follianMode by viewModel.follianMode.collectAsStateWithLifecycle(initialValue = false)
+    val amoledBlackEnabled by viewModel.amoledBlackEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val bottomAddressBarEnabled by viewModel.bottomAddressBarEnabled.collectAsStateWithLifecycle(initialValue = false)
     
     // Fake Mode state
     val fakeModeEnabled by FakeModeManager.isEnabled.collectAsStateWithLifecycle()
@@ -121,6 +134,147 @@ fun SettingsScreen(
                                 expanded = false
                             }
                         )
+                    }
+                }
+            }
+
+            SettingsSwitch(
+                title = "Bottom Address Bar",
+                subtitle = "Move the address bar and controls to the bottom",
+                checked = bottomAddressBarEnabled,
+                onCheckedChange = { viewModel.setBottomAddressBarEnabled(it) }
+            )
+
+            // Custom Start Page
+            val homePage by viewModel.homePage.collectAsStateWithLifecycle(initialValue = "about:blank")
+            var homePageText by remember(homePage) { mutableStateOf(homePage) }
+            
+            OutlinedTextField(
+                value = homePageText,
+                onValueChange = { homePageText = it },
+                label = { Text("Custom Start Page") },
+                placeholder = { Text("https://example.com or about:blank") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                supportingText = { Text("Leave empty or use 'about:blank' for the default new tab page") },
+                trailingIcon = {
+                    if (homePageText != homePage) {
+                        IconButton(onClick = { 
+                            val finalUrl = if (homePageText.isBlank()) "about:blank" else homePageText
+                            viewModel.setHomePage(finalUrl)
+                        }) {
+                            Icon(Icons.Default.Check, contentDescription = "Save")
+                        }
+                    }
+                }
+            )
+
+            HorizontalDivider()
+
+            // Appearance & Customization
+            Text(
+                text = "Appearance",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            // Wallpaper Picker
+            val wallpaperUri by viewModel.startPageWallpaperUri.collectAsStateWithLifecycle(initialValue = null)
+            val blurAmount by viewModel.startPageBlurAmount.collectAsStateWithLifecycle(initialValue = 0f)
+            
+            val context = LocalContext.current
+            val launcher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                uri?.let {
+                    // Take persistable permission
+                    try {
+                        context.contentResolver.takePersistableUriPermission(
+                            it,
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                    viewModel.setStartPageWallpaperUri(it.toString())
+                }
+            }
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Start Page Wallpaper",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                
+                if (wallpaperUri != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                    ) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(wallpaperUri)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = "Wallpaper Preview",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .blur(blurAmount.dp)
+                        )
+                        
+                        // Overlay sample text to show effect
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "JusBrowse",
+                                    style = MaterialTheme.typography.displayMedium, // Smaller than actual for preview
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.setStartPageWallpaperUri(null) },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), CircleShape)
+                        ) {
+                            Icon(Icons.Default.Delete, "Remove Wallpaper")
+                        }
+                    }
+                    
+                    // Blur Slider
+                    Column {
+                        Text(
+                            text = "Blur: ${blurAmount.toInt()}%",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Slider(
+                            value = blurAmount,
+                            onValueChange = { viewModel.setStartPageBlurAmount(it) },
+                            valueRange = 0f..25f,
+                            steps = 24
+                        )
+                    }
+
+                } else {
+                    OutlinedButton(
+                        onClick = { launcher.launch(arrayOf("image/*")) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Image, null, modifier = Modifier.padding(end = 8.dp))
+                        Text("Select Wallpaper Image")
                     }
                 }
             }
@@ -250,6 +404,13 @@ fun SettingsScreen(
                 onCheckedChange = { viewModel.setCookieBlockerEnabled(it) }
             )
 
+            SettingsSwitch(
+                title = "Popup Blocker",
+                subtitle = "Block pop-ups and window.open() abuse",
+                checked = popupBlockerEnabled,
+                onCheckedChange = { viewModel.setPopupBlockerEnabled(it) }
+            )
+
             // 🚫 Follian Mode - Hard JS Kill
             SettingsSwitch(
                 title = "Follian Mode (JS Off)",
@@ -297,6 +458,15 @@ fun SettingsScreen(
                 checked = darkMode,
                 onCheckedChange = { viewModel.setDarkMode(it) }
             )
+
+            if (darkMode) {
+                SettingsSwitch(
+                    title = "AMOLED Black Mode",
+                    subtitle = "Force pure black backgrounds (OLED only)",
+                    checked = amoledBlackEnabled,
+                    onCheckedChange = { viewModel.setAmoledBlackEnabled(it) }
+                )
+            }
 
             SettingsSwitch(
                 title = "Show Tab Icons",

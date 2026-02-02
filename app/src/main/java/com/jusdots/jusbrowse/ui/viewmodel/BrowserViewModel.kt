@@ -4,6 +4,10 @@ import android.app.Application
 import android.webkit.WebView
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import com.jusdots.jusbrowse.ui.components.MediaData
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.lifecycle.AndroidViewModel
@@ -83,10 +87,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val flagSecureEnabled = preferencesRepository.flagSecureEnabled
     val doNotTrackEnabled = preferencesRepository.doNotTrackEnabled
     val cookieBlockerEnabled = preferencesRepository.cookieBlockerEnabled
+    val popupBlockerEnabled = preferencesRepository.popupBlockerEnabled
     val showTabIcons = preferencesRepository.showTabIcons
     val themePreset = preferencesRepository.themePreset
     val virusTotalApiKey = preferencesRepository.virusTotalApiKey
     val koodousApiKey = preferencesRepository.koodousApiKey
+    val amoledBlackEnabled = preferencesRepository.amoledBlackEnabled
+    val bottomAddressBarEnabled = preferencesRepository.bottomAddressBarEnabled
+    val startPageWallpaperUri = preferencesRepository.startPageWallpaperUri
+    val startPageBlurAmount = preferencesRepository.startPageBlurAmount
 
     // Multi-View Mode
     private val _isMultiViewMode = MutableStateFlow(false)
@@ -95,6 +104,45 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // Screen Navigation
     private val _currentScreen = MutableStateFlow(Screen.BROWSER)
     val currentScreen: StateFlow<Screen> = _currentScreen.asStateFlow()
+
+    // Intent Handling
+    private var isSessionLoaded = false
+    private var pendingIntentUrl: String? = null
+
+    fun handleIntentURL(url: String) {
+        if (!isSessionLoaded) {
+            pendingIntentUrl = url
+        } else {
+            // Check if URL is already open in any tab to avoid duplicates? 
+            // For now, just open new tab for every external intent
+            createNewTab(url)
+        }
+    }
+
+    // Airlock State (Global Overlays)
+    var showAirlock by mutableStateOf(false)
+    var airlockUrl by mutableStateOf("")
+    var airlockMimeType by mutableStateOf("")
+    
+    var showGallery by mutableStateOf(false)
+    var galleryMediaData by mutableStateOf<MediaData?>(null)
+    
+    fun openAirlockViewer(url: String, mimeType: String) {
+        airlockUrl = url
+        airlockMimeType = mimeType
+        showAirlock = true
+    }
+    
+    fun openAirlockGallery(data: MediaData) {
+        galleryMediaData = data
+        showGallery = true
+    }
+    
+    fun closeAirlock() {
+        showAirlock = false
+        showGallery = false
+    }
+
 
     init {
         viewModelScope.launch {
@@ -130,20 +178,37 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 } else emptyMap()
 
                 tabs.clear()
-                // Sanitize loaded tabs to ensure no null containerId from old sessions
-                val sanitizedTabs = loadedTabs.map { tab ->
-                    // Use a safe check even if Kotlin thinks it's non-null
-                    val cid = try { tab.containerId } catch (e: Exception) { null }
-                    if (cid == null) tab.copy(containerId = "default") else tab
-                }
-                tabs.addAll(sanitizedTabs)
-                
                 tabWindowStates.clear()
                 tabWindowStates.putAll(loadedStates)
 
-                _activeTabIndex.value = if (savedActiveIndex in tabs.indices) savedActiveIndex else 0
-                if (tabs.isNotEmpty()) {
-                    _currentUrl.value = tabs[_activeTabIndex.value].url
+                // Sanitize and LOAD STAGGERED to avoid ANR from 10+ webviews at once
+                val sanitizedTabs = loadedTabs.map { tab ->
+                    val cid = try { tab.containerId } catch (e: Exception) { null }
+                    if (cid == null) tab.copy(containerId = "default") else tab
+                }
+                
+                // Add active tab first if any
+                val activeIdx = if (savedActiveIndex in sanitizedTabs.indices) savedActiveIndex else 0
+                if (sanitizedTabs.isNotEmpty()) {
+                    tabs.add(sanitizedTabs[activeIdx])
+                    _activeTabIndex.value = 0
+                    _currentUrl.value = sanitizedTabs[activeIdx].url
+                }
+                
+                // Add others with delay
+                viewModelScope.launch {
+                    sanitizedTabs.forEachIndexed { index, tab ->
+                        if (index != activeIdx) {
+                            kotlinx.coroutines.delay(300) // 300ms gap
+                            tabs.add(tab)
+                        }
+                    }
+                }
+                
+                isSessionLoaded = true
+                pendingIntentUrl?.let { url ->
+                    createNewTab(url)
+                    pendingIntentUrl = null
                 }
             } catch (e: Exception) {
                 // Layer 12: No debug logging in release - silently handle
@@ -477,6 +542,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setStartPageWallpaperUri(uri: String?) {
+        viewModelScope.launch {
+            preferencesRepository.setStartPageWallpaperUri(uri)
+        }
+    }
+
+    fun setStartPageBlurAmount(amount: Float) {
+        viewModelScope.launch {
+            preferencesRepository.setStartPageBlurAmount(amount)
+        }
+    }
+
     fun setJavascriptEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setJavascriptEnabled(enabled)
@@ -516,6 +593,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun setCookieBlockerEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setCookieBlockerEnabled(enabled)
+        }
+    }
+
+    fun setPopupBlockerEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setPopupBlockerEnabled(enabled)
         }
     }
 
@@ -573,6 +656,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setAmoledBlackEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setAmoledBlackEnabled(enabled)
+        }
+    }
+
+    fun setBottomAddressBarEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setBottomAddressBarEnabled(enabled)
+        }
+    }
+
     // Site Settings
     fun updateSiteSettings(settings: com.jusdots.jusbrowse.data.models.SiteSettings) {
         viewModelScope.launch {
@@ -616,7 +711,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun addDownload(fileName: String, url: String, filePath: String, fileSize: Long) {
+    fun addDownload(fileName: String, url: String, filePath: String, fileSize: Long, systemDownloadId: Long = -1) {
         viewModelScope.launch {
             downloadRepository.addDownload(
                 DownloadItem(
@@ -624,7 +719,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     url = url,
                     filePath = filePath,
                     fileSize = fileSize,
-                    securityStatus = "Pending Scan"
+                    securityStatus = "Pending Scan",
+                    systemDownloadId = systemDownloadId
                 )
             )
         }
@@ -642,11 +738,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 .setAllowedOverRoaming(false)
 
             val downloadManager = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
-            downloadManager.enqueue(request)
+            val id = downloadManager.enqueue(request)
 
             // Add to database
             val fullPath = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS).absolutePath + "/" + fileName
-            addDownload(fileName, url, fullPath, 0L)
+            addDownload(fileName, url, fullPath, 0L, id)
+            
+            android.widget.Toast.makeText(context, "Download started", android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             android.widget.Toast.makeText(context, "Download failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
         }

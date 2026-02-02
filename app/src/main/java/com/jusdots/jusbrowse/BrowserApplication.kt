@@ -7,10 +7,16 @@ import com.jusdots.jusbrowse.data.database.BrowserDatabase
 class BrowserApplication : Application() {
     
     companion object {
-        private lateinit var instance: BrowserApplication
+        @Volatile
+        private var instance: BrowserApplication? = null
+        
+        fun getInstance(): BrowserApplication {
+            return instance ?: throw IllegalStateException("Application not initialized")
+        }
         
         val database: BrowserDatabase by lazy {
-            val context = instance.applicationContext
+            val app = getInstance()
+            val context = app.applicationContext
             val personaId = com.jusdots.jusbrowse.security.FakeModeManager.getSavedPersonaId(context)
             val dbName = if (personaId != null) "browser_database_$personaId" else "browser_database"
             

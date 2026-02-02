@@ -56,7 +56,7 @@ object DownloadValidator {
         val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val extension = getFileExtension(fileName).lowercase()
         
-        // Check if blocked
+        // Check if blocked extension
         if (extension in dangerousExtensions) {
             return DownloadValidationResult(
                 isAllowed = false,
@@ -67,7 +67,7 @@ object DownloadValidator {
             )
         }
 
-        // Check if requires warning
+        // Check if manual warning extension
         if (extension in warnExtensions) {
             return DownloadValidationResult(
                 isAllowed = true,
@@ -78,16 +78,28 @@ object DownloadValidator {
             )
         }
 
-        // Validate MIME type consistency
+        // Validate MIME type consistency (STRICT CHECK)
         val expectedMime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
-        if (mimeType != null && expectedMime != null && !mimeType.contains(expectedMime.split("/").last())) {
-            return DownloadValidationResult(
-                isAllowed = true,
-                requiresWarning = true,
-                warningMessage = "File type mismatch: $fileName claims to be $mimeType but has .$extension extension",
-                fileName = fileName,
-                mimeType = mimeType
-            )
+        if (mimeType != null && expectedMime != null) {
+            // Strict equality check or specialized handling
+            // We allow exact match OR if the server sends generic octet-stream we might trust extension (with warning if needed)
+            // But if extension says image/png and mime says application/x-dosexec, that's a red flag.
+            
+            val cleanMime = mimeType.lowercase().substringBefore(";")
+            val cleanExpected = expectedMime.lowercase()
+            
+            // Allow if server sends generic binary type
+            val isGenericServerMime = cleanMime == "application/octet-stream" || cleanMime == "application/x-download"
+            
+            if (!isGenericServerMime && cleanMime != cleanExpected) {
+                 return DownloadValidationResult(
+                    isAllowed = true,
+                    requiresWarning = true,
+                    warningMessage = "Security Warning: File type mismatch.\n\nFile: $fileName\nExtension suggests: $expectedMime\nServer sent: $cleanMime\n\nThis could be an attempt to disguise a dangerous file.",
+                    fileName = fileName,
+                    mimeType = mimeType
+                )
+            }
         }
 
         return DownloadValidationResult(

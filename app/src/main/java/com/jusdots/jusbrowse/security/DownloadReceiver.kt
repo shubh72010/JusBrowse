@@ -38,15 +38,15 @@ class DownloadReceiver(
                     val uriIndex = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
                     val filenameIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
                     
-                    if (uriIndex != -1 && filenameIndex != -1) {
+                    if (uriIndex != -1) {
                         val fileUri = cursor.getString(uriIndex)
-                        val fileName = cursor.getString(filenameIndex)
+                        val fileName = if (filenameIndex != -1) cursor.getString(filenameIndex) else "unknown_file"
                         
-                        // Convert URI to File Path
-                        val filePath = fileUri.removePrefix("file://")
+                        // Convert URI to File Path (Robust)
+                        val filePath = resolveFilePath(context, fileUri)
                         
                         // Trigger Scan
-                        performSecurityScan(fileName, filePath)
+                        performSecurityScan(downloadId, fileName, filePath)
                     }
                 }
             }
@@ -54,7 +54,29 @@ class DownloadReceiver(
         }
     }
 
-    private fun performSecurityScan(fileName: String, filePath: String) {
+    private fun resolveFilePath(context: Context, uriString: String): String {
+        return try {
+            val uri = android.net.Uri.parse(uriString)
+            if (uri.scheme == "file") {
+                uri.path ?: uriString.removePrefix("file://")
+            } else if (uri.scheme == "content") {
+                // Try to query MediaStore for real path if possible, or just use cached path logic
+                val projection = arrayOf(android.provider.MediaStore.Files.FileColumns.DATA)
+                context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                     if (cursor.moveToFirst()) {
+                         val idx = cursor.getColumnIndexOrThrow(android.provider.MediaStore.Files.FileColumns.DATA)
+                         cursor.getString(idx)
+                     } else null
+                } ?: uriString // Fallback
+            } else {
+                uriString
+            }
+        } catch (e: Exception) {
+            uriString.removePrefix("file://")
+        }
+    }
+
+    private fun performSecurityScan(downloadId: Long, fileName: String, filePath: String) {
         scope.launch {
             try {
                 // Get API Keys from Preferences
@@ -62,26 +84,45 @@ class DownloadReceiver(
                 val koodousKey = preferencesRepository.koodousApiKey.first()
 
                 // Update status to Scanning
-                updateDownloadStatus(fileName, "Scanning", "Scan in progress...")
+                updateDownloadStatus(downloadId, fileName, "Scanning", "Scan in progress...")
+
+                // Check if file exists before scanning
+                val file = java.io.File(filePath)
+                if (!file.exists()) {
+                     updateDownloadStatus(downloadId, fileName, "Error", "File not found at $filePath")
+                     return@launch
+                }
 
                 // Run Scanner
                 val result = SecurityScanner.scanFile(filePath, vtKey, koodousKey)
 
                 // Update Database with Result
-                updateDownloadStatus(fileName, result.status, result.detail)
+                updateDownloadStatus(downloadId, fileName, result.status, result.detail)
             } catch (e: Exception) {
-                updateDownloadStatus(fileName, "Error", "Scan failed: ${e.message}")
+                updateDownloadStatus(downloadId, fileName, "Error", "Scan failed: ${e.message}")
             }
         }
     }
 
-    private suspend fun updateDownloadStatus(fileName: String, status: String, result: String) {
+    private suspend fun updateDownloadStatus(downloadId: Long, fileName: String, status: String, result: String) {
         val allDownloads = downloadRepository.allDownloads.first()
-        val item = allDownloads.find { it.fileName == fileName }
+        
+        // Try finding by ID first (New Logic)
+        var item = allDownloads.find { it.systemDownloadId == downloadId }
+        
+        // Fallback to filename (Old Logic - Migration support)
+        if (item == null) {
+            item = allDownloads.find { it.fileName == fileName }
+        }
+
         if (item != null) {
-            downloadRepository.addDownload(
-                item.copy(securityStatus = status, scanResult = result)
+            // Update ID if missing
+            val updatedItem = item.copy(
+                securityStatus = status, 
+                scanResult = result,
+                systemDownloadId = if (item.systemDownloadId == -1L) downloadId else item.systemDownloadId
             )
+            downloadRepository.addDownload(updatedItem)
         }
     }
 }

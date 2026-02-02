@@ -14,5 +14,6 @@ data class DownloadItem(
     val timestamp: Long = System.currentTimeMillis(),
     val status: String = "Completed", // Downloading, Completed, Failed
     val securityStatus: String = "Not Scanned", // Not Scanned, Scanning, Clean, Malicious, Error
-    val scanResult: String? = null // Detailed message or hash
+    val scanResult: String? = null, // Detailed message or hash
+    val systemDownloadId: Long = -1 // ID from Android DownloadManager
 )

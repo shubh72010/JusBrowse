@@ -24,6 +24,7 @@ import android.app.DownloadManager
 
 class MainActivity : ComponentActivity() {
     private lateinit var downloadReceiver: DownloadReceiver
+    private lateinit var viewModel: BrowserViewModel
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -45,16 +46,22 @@ class MainActivity : ComponentActivity() {
             registerReceiver(downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
         }
         
+        
         enableEdgeToEdge()
+        
+        viewModel = androidx.lifecycle.ViewModelProvider(this)[BrowserViewModel::class.java]
+        handleIntent(intent)
         
         setContent {
             val viewModel: BrowserViewModel = viewModel()
             val themePreset by viewModel.themePreset.collectAsStateWithLifecycle(initialValue = "SYSTEM")
             val darkMode by viewModel.darkMode.collectAsStateWithLifecycle(initialValue = true)
+            val amoledBlackEnabled by viewModel.amoledBlackEnabled.collectAsStateWithLifecycle(initialValue = false)
 
             JusBrowse2Theme(
                 darkTheme = darkMode,
-                themePreset = themePreset
+                themePreset = themePreset,
+                amoledBlackEnabled = amoledBlackEnabled
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -80,6 +87,17 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         if (::downloadReceiver.isInitialized) {
             unregisterReceiver(downloadReceiver)
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: android.content.Intent?) {
+        intent?.data?.let { uri ->
+            viewModel.handleIntentURL(uri.toString())
         }
     }
 }

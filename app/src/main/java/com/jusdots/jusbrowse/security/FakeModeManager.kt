@@ -309,6 +309,22 @@ object FakeModeManager {
                     }, 'getEntriesByType');
                 } catch(e) {}
 
+                // ===== MATH EDGE CASES (Normalization) =====
+                try {
+                    const originalMathTan = Math.tan;
+                    const originalMathAcosh = Math.acosh;
+                    
+                    Math.tan = makeNative(function(x) {
+                        if (Math.abs(x) > 1e100) return -1.4214488238747245;
+                        return originalMathTan.call(Math, x);
+                    }, 'tan');
+                    
+                    Math.acosh = makeNative(function(x) {
+                        if (x > 1e308) return Infinity;
+                        return originalMathAcosh.call(Math, x);
+                    }, 'acosh');
+                } catch(e) {}
+
                 // ===== PERMISSIONS SPOOFING =====
                 try {
                     if (navigator.permissions && navigator.permissions.query) {
@@ -365,11 +381,11 @@ object FakeModeManager {
                     defineSafeProp(navigator, 'platform', () => '$platformString'); 
                     defineSafeProp(navigator, 'vendor', () => ${if (persona.platform == "Android") "'Google Inc.'" else "'Apple Computer, Inc.'"});
                     defineSafeProp(navigator, 'maxTouchPoints', () => ${if (persona.mobile) 5 else 0});
-                    defineSafeProp(navigator, 'hardwareConcurrency', () => Math.min(12, ${data[PrivacyPacket.KEY_HARDWARE_CONCURRENCY] as? Int ?: 8}));
+                    defineSafeProp(navigator, 'hardwareConcurrency', () => ${data[PrivacyPacket.KEY_HARDWARE_CONCURRENCY] as? Int ?: 8});
                     defineSafeProp(navigator, 'webdriver', () => false);
                     defineSafeProp(navigator, 'doNotTrack', () => '${persona.doNotTrack}');
                     if (navigator.deviceMemory !== undefined) {
-                        defineSafeProp(navigator, 'deviceMemory', () => Math.min(8, ${data[PrivacyPacket.KEY_DEVICE_MEMORY] as? Int ?: 8}));
+                        defineSafeProp(navigator, 'deviceMemory', () => ${data[PrivacyPacket.KEY_DEVICE_MEMORY] as? Int ?: 8});
                     }
 
                     const createMockArray = (type, tag) => {
@@ -534,6 +550,42 @@ object FakeModeManager {
                         reportSuspicion(25, 'Canvas Export');
                         return originalToDataURL.apply(this, arguments);
                     }, 'toDataURL');
+                    
+                    // ===== AUDIO BUFFER NOISE (OfflineAudioContext) =====
+                    if (window.OfflineAudioContext) {
+                        const OriginalOAC = OfflineAudioContext;
+                        window.OfflineAudioContext = makeNative(function(channels, length, sampleRate) {
+                            const ctx = new OriginalOAC(channels, length, sampleRate);
+                            const originalStartRendering = ctx.startRendering.bind(ctx);
+                            
+                            ctx.startRendering = makeNative(function() {
+                                return originalStartRendering().then(buffer => {
+                                    // Add seeded noise to FingerprintJS hash range (4500-5000)
+                                    const channel = buffer.getChannelData(0);
+                                    const audioPrng = (function(seed) {
+                                        return function() {
+                                            let t = seed += 0x6D2B79F5;
+                                            t = Math.imul(t ^ t >>> 15, t | 1);
+                                            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+                                        };
+                                    })(NOISE_SEED + 1000);
+                                    
+                                    for (let i = 4500; i < Math.min(5000, channel.length); i++) {
+                                        if (audioPrng() > 0.95) {
+                                            channel[i] += (audioPrng() - 0.5) * 0.001;
+                                        }
+                                    }
+                                    return buffer;
+                                });
+                            }, 'startRendering');
+                            
+                            return ctx;
+                        }, 'OfflineAudioContext');
+                        
+                        if (window.webkitOfflineAudioContext) {
+                            window.webkitOfflineAudioContext = window.OfflineAudioContext;
+                        }
+                    }
                     
                     if (window.AudioContext || window.webkitAudioContext) {
                         const AC = window.AudioContext || window.webkitAudioContext;
@@ -723,6 +775,30 @@ object FakeModeManager {
                         if (query.includes('prefers-reduced-motion')) {
                             return {
                                 matches: false,
+                                media: query,
+                                onchange: null,
+                                addListener: makeNative(function() {}, 'addListener'),
+                                removeListener: makeNative(function() {}, 'removeListener'),
+                                addEventListener: makeNative(function() {}, 'addEventListener'),
+                                removeEventListener: makeNative(function() {}, 'removeEventListener'),
+                                dispatchEvent: makeNative(function() { return false; }, 'dispatchEvent')
+                            };
+                        }
+                        if (query.includes('color-gamut')) {
+                            return {
+                                matches: query.includes('srgb'),
+                                media: query,
+                                onchange: null,
+                                addListener: makeNative(function() {}, 'addListener'),
+                                removeListener: makeNative(function() {}, 'removeListener'),
+                                addEventListener: makeNative(function() {}, 'addEventListener'),
+                                removeEventListener: makeNative(function() {}, 'removeEventListener'),
+                                dispatchEvent: makeNative(function() { return false; }, 'dispatchEvent')
+                            };
+                        }
+                        if (query.includes('dynamic-range')) {
+                            return {
+                                matches: query.includes('standard'),
                                 media: query,
                                 onchange: null,
                                 addListener: makeNative(function() {}, 'addListener'),

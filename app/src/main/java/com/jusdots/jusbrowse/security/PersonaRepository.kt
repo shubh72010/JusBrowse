@@ -51,6 +51,12 @@ object PersonaRepository {
             "EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "OES_standard_derivatives",
             "WEBGL_debug_renderer_info", "WEBGL_lose_context", "ANGLE_instanced_arrays"
         ),
+        webglParams = mapOf(
+            34047 to 16.0,    // MAX_TEXTURE_MAX_ANISOTROPY_EXT
+            34076 to 8192,    // MAX_3D_TEXTURE_SIZE
+            36183 to 16,      // MAX_COLOR_ATTACHMENTS
+            34024 to 16       // MAX_DRAW_BUFFERS
+        ),
         audioBaseLatency = 0.012,
         fontJitterSeed = 101L
     )
@@ -96,6 +102,12 @@ object PersonaRepository {
         webglMaxTextureSize = 4096,
         webglMaxRenderBufferSize = 4096,
         webglExtensions = listOf("EXT_blend_minmax", "EXT_sRGB", "OES_texture_float"),
+        webglParams = mapOf(
+            34047 to 8.0,     // MAX_TEXTURE_MAX_ANISOTROPY_EXT
+            34076 to 4096,    // MAX_3D_TEXTURE_SIZE
+            36183 to 8,       // MAX_COLOR_ATTACHMENTS
+            34024 to 8        // MAX_DRAW_BUFFERS
+        ),
         audioBaseLatency = 0.018,
         fontJitterSeed = 102L
     )
@@ -142,6 +154,12 @@ object PersonaRepository {
         webglMaxTextureSize = 16384,
         webglMaxRenderBufferSize = 16384,
         webglExtensions = listOf("EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "WEBGL_debug_renderer_info"),
+        webglParams = mapOf(
+            34047 to 16.0,    // MAX_TEXTURE_MAX_ANISOTROPY_EXT
+            34076 to 16384,   // MAX_3D_TEXTURE_SIZE
+            36183 to 16,      // MAX_COLOR_ATTACHMENTS
+            34024 to 16       // MAX_DRAW_BUFFERS
+        ),
         audioBaseLatency = 0.006,
         fontJitterSeed = 201L
     )
@@ -186,6 +204,12 @@ object PersonaRepository {
         networkRtt = 50,
         webglMaxTextureSize = 8192,
         webglMaxRenderBufferSize = 8192,
+        webglParams = mapOf(
+            34047 to 8.0,     // MAX_TEXTURE_MAX_ANISOTROPY_EXT
+            34076 to 8192,    // MAX_3D_TEXTURE_SIZE
+            36183 to 8,       // MAX_COLOR_ATTACHMENTS
+            34024 to 8        // MAX_DRAW_BUFFERS
+        ),
         audioBaseLatency = 0.022,
         fontJitterSeed = 202L
     )
@@ -231,6 +255,12 @@ object PersonaRepository {
         networkRtt = 10,
         webglMaxTextureSize = 16384,
         webglMaxRenderBufferSize = 16384,
+        webglParams = mapOf(
+            34047 to 16.0,    // MAX_TEXTURE_MAX_ANISOTROPY_EXT
+            34076 to 16384,   // MAX_3D_TEXTURE_SIZE
+            36183 to 16,      // MAX_COLOR_ATTACHMENTS
+            34024 to 16       // MAX_DRAW_BUFFERS
+        ),
         audioBaseLatency = 0.007,
         fontJitterSeed = 301L
     )
@@ -275,6 +305,12 @@ object PersonaRepository {
         networkRtt = 40,
         webglMaxTextureSize = 8192,
         webglMaxRenderBufferSize = 8192,
+        webglParams = mapOf(
+            34047 to 8.0,     // MAX_TEXTURE_MAX_ANISOTROPY_EXT
+            34076 to 8192,    // MAX_3D_TEXTURE_SIZE
+            36183 to 8,       // MAX_COLOR_ATTACHMENTS
+            34024 to 8        // MAX_DRAW_BUFFERS
+        ),
         audioBaseLatency = 0.025,
         fontJitterSeed = 302L
     )
@@ -319,6 +355,12 @@ object PersonaRepository {
         networkRtt = 35,
         webglMaxTextureSize = 16384,
         webglMaxRenderBufferSize = 16384,
+        webglParams = mapOf(
+            34047 to 16.0,    // MAX_TEXTURE_MAX_ANISOTROPY_EXT
+            34076 to 16384,   // MAX_3D_TEXTURE_SIZE
+            36183 to 16,      // MAX_COLOR_ATTACHMENTS
+            34024 to 16       // MAX_DRAW_BUFFERS
+        ),
         audioBaseLatency = 0.010,
         fontJitterSeed = 402L
     )
@@ -363,6 +405,12 @@ object PersonaRepository {
         networkRtt = 55,
         webglMaxTextureSize = 4096,
         webglMaxRenderBufferSize = 4096,
+        webglParams = mapOf(
+            34047 to 4.0,     // MAX_TEXTURE_MAX_ANISOTROPY_EXT
+            34076 to 4096,    // MAX_3D_TEXTURE_SIZE
+            36183 to 4,       // MAX_COLOR_ATTACHMENTS
+            34024 to 4        // MAX_DRAW_BUFFERS
+        ),
         audioBaseLatency = 0.030,
         fontJitterSeed = 401L
     )

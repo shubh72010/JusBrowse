@@ -11,6 +11,13 @@ import com.jusdots.jusbrowse.ui.components.BottomTabBar
 import com.jusdots.jusbrowse.ui.components.BrowserToolBar
 import com.jusdots.jusbrowse.ui.components.FreeformWorkspace
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
+import com.jusdots.jusbrowse.ui.components.AirlockGallery
+import com.jusdots.jusbrowse.ui.components.AirlockViewer
+import com.jusdots.jusbrowse.ui.components.MediaData
+import com.jusdots.jusbrowse.utils.MediaExtractor
+import com.google.gson.Gson
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,6 +31,32 @@ fun BrowserScreen(
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
     val isMultiView by viewModel.isMultiViewMode.collectAsStateWithLifecycle()
     val showTabIcons by viewModel.showTabIcons.collectAsStateWithLifecycle(initialValue = false)
+    val bottomAddressBarEnabled by viewModel.bottomAddressBarEnabled.collectAsStateWithLifecycle(initialValue = false)
+
+    val context = LocalContext.current
+    
+    // Helper to trigger extraction
+    fun openAirlockGallery() {
+        val currentTab = if (activeTabIndex in tabs.indices) tabs[activeTabIndex] else null
+        if (currentTab != null) {
+            viewModel.getWebView(currentTab.id)?.evaluateJavascript(MediaExtractor.EXTRACT_MEDIA_SCRIPT) { result ->
+                if (result != null && result != "null") {
+                     try {
+                         val json = if (result.startsWith("\"") && result.endsWith("\"")) {
+                             result.substring(1, result.length - 1)
+                                 .replace("\\\"", "\"")
+                                 .replace("\\\\", "\\")
+                         } else result
+                         
+                         val data = Gson().fromJson(json, MediaData::class.java)
+                         viewModel.openAirlockGallery(data)
+                     } catch (e: Exception) {
+                         e.printStackTrace()
+                     }
+                }
+            }
+        }
+    }
 
     // Handle Back Press at high level
     androidx.activity.compose.BackHandler(enabled = true) {
@@ -53,37 +86,56 @@ fun BrowserScreen(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             // Only show Bottom/Top bar when NOT in Multi-View (Windowed) mode?
             // User requested "Individual controls", so global toolbar is redundant in window mode.
-            if (!isMultiView) {
-                BrowserToolBar(
-                    viewModel = viewModel,
-                    currentTab = if (activeTabIndex in tabs.indices) tabs[activeTabIndex] else null
-                )
-            } else {
-                // In Multi-View, we might still want a way to access Settings/New Tab
-                // Or we rely on the floating windows having everything?
-                // Let's keep a minimal toolbar or floating action button.
-                // For now, reuse toolbar but maybe hide address/nav buttons?
-                BrowserToolBar(
-                    viewModel = viewModel,
-                    currentTab = null // No specific tab selected globally
-                )
+            if (!bottomAddressBarEnabled) {
+                if (!isMultiView) {
+                    BrowserToolBar(
+                        viewModel = viewModel,
+                        currentTab = if (activeTabIndex in tabs.indices) tabs[activeTabIndex] else null,
+                        onOpenAirlockGallery = { openAirlockGallery() }
+                    )
+                } else {
+                    // In Multi-View, keep a minimal toolbar
+                    BrowserToolBar(
+                        viewModel = viewModel,
+                        currentTab = null,
+                        onOpenAirlockGallery = { openAirlockGallery() }
+                    )
+                }
             }
         },
         bottomBar = {
-            if (!isMultiView) {
-                BottomTabBar(
-                    tabs = tabs,
-                    activeTabIndex = activeTabIndex,
-                    onTabSelected = { index -> viewModel.switchTab(index) },
-                    onTabClosed = { index -> viewModel.closeTab(index) },
-                    onNewTab = { containerId -> viewModel.createNewTab(containerId = containerId) },
-                    showIcons = showTabIcons
-                )
+            Column {
+                if (!isMultiView) {
+                    if (bottomAddressBarEnabled) {
+                        BrowserToolBar(
+                            viewModel = viewModel,
+                            currentTab = if (activeTabIndex in tabs.indices) tabs[activeTabIndex] else null,
+                            onOpenAirlockGallery = { openAirlockGallery() }
+                        )
+                    }
+                    
+                    BottomTabBar(
+                        tabs = tabs,
+                        activeTabIndex = activeTabIndex,
+                        onTabSelected = { index -> viewModel.switchTab(index) },
+                        onTabClosed = { index -> viewModel.closeTab(index) },
+                        onNewTab = { containerId -> viewModel.createNewTab(containerId = containerId) },
+                        showIcons = showTabIcons
+                    )
+                } else if (bottomAddressBarEnabled) {
+                    // Minimal toolbar at bottom if in multi-view
+                    BrowserToolBar(
+                        viewModel = viewModel,
+                        currentTab = null,
+                        onOpenAirlockGallery = { openAirlockGallery() }
+                    )
+                }
             }
         }
     ) { paddingValues ->
@@ -136,6 +188,34 @@ fun BrowserScreen(
                     onBack = { viewModel.navigateToScreen(Screen.BROWSER) }
                 )
             }
+        }
+    }
+
+        
+         // Airlock Gallery Overlay (Global)
+        if (viewModel.showGallery && viewModel.galleryMediaData != null) {
+            AirlockGallery(
+                mediaData = viewModel.galleryMediaData!!,
+                onMediaClick = { url, mimeType ->
+                    viewModel.openAirlockViewer(url, mimeType)
+                    viewModel.showGallery = false
+                },
+                onClose = { viewModel.closeAirlock() },
+                modifier = Modifier.align(Alignment.Center) 
+            )
+        }
+        
+        // Airlock Media Viewer Overlay (Global)
+        if (viewModel.showAirlock) {
+            AirlockViewer(
+                url = viewModel.airlockUrl,
+                mimeType = viewModel.airlockMimeType,
+                onDismiss = { viewModel.closeAirlock() },
+                onDownload = { url ->
+                    viewModel.startDownload(context, url, android.webkit.URLUtil.guessFileName(url, null, null))
+                },
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }

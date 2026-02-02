@@ -27,6 +27,7 @@ class PreferencesRepository(private val context: Context) {
         val FLAG_SECURE_ENABLED = booleanPreferencesKey("flag_secure_enabled")
         val DO_NOT_TRACK_ENABLED = booleanPreferencesKey("do_not_track_enabled")
         val COOKIE_BLOCKER_ENABLED = booleanPreferencesKey("cookie_blocker_enabled")
+        val POPUP_BLOCKER_ENABLED = booleanPreferencesKey("popup_blocker_enabled")
         val SAVED_SHORTCUTS = stringPreferencesKey("saved_shortcuts")
         val SHOW_TAB_ICONS = booleanPreferencesKey("show_tab_icons")
         val THEME_PRESET = stringPreferencesKey("theme_preset")
@@ -37,6 +38,10 @@ class PreferencesRepository(private val context: Context) {
         val TOOLBAR_POSITION = stringPreferencesKey("toolbar_position")
         val COMPACT_MODE = booleanPreferencesKey("compact_mode")
         val ADDRESS_BAR_STYLE = stringPreferencesKey("address_bar_style")
+        val AMOLED_BLACK_ENABLED = booleanPreferencesKey("amoled_black_enabled")
+        val BOTTOM_ADDRESS_BAR_ENABLED = booleanPreferencesKey("bottom_address_bar_enabled")
+        val START_PAGE_WALLPAPER_URI = stringPreferencesKey("start_page_wallpaper_uri")
+        val START_PAGE_BLUR_AMOUNT = stringPreferencesKey("start_page_blur_amount")
     }
 
     val searchEngine: Flow<String> = context.dataStore.data.map { preferences ->
@@ -54,6 +59,8 @@ class PreferencesRepository(private val context: Context) {
     val darkMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferenceKeys.DARK_MODE] ?: true
     }
+
+
 
     val savedTabs: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[PreferenceKeys.SAVED_TABS]
@@ -85,6 +92,10 @@ class PreferencesRepository(private val context: Context) {
 
     val cookieBlockerEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferenceKeys.COOKIE_BLOCKER_ENABLED] ?: false
+    }
+
+    val popupBlockerEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.POPUP_BLOCKER_ENABLED] ?: true
     }
 
     val showTabIcons: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -175,6 +186,12 @@ class PreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun setPopupBlockerEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.POPUP_BLOCKER_ENABLED] = enabled
+        }
+    }
+
     suspend fun setShowTabIcons(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.SHOW_TAB_ICONS] = enabled
@@ -238,6 +255,50 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setAddressBarStyle(style: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.ADDRESS_BAR_STYLE] = style
+        }
+    }
+
+    val amoledBlackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.AMOLED_BLACK_ENABLED] ?: false
+    }
+
+    val bottomAddressBarEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.BOTTOM_ADDRESS_BAR_ENABLED] ?: false
+    }
+
+    suspend fun setAmoledBlackEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.AMOLED_BLACK_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setBottomAddressBarEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.BOTTOM_ADDRESS_BAR_ENABLED] = enabled
+        }
+    }
+
+    val startPageWallpaperUri: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.START_PAGE_WALLPAPER_URI]
+    }
+
+    val startPageBlurAmount: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.START_PAGE_BLUR_AMOUNT]?.toFloat() ?: 0f
+    }
+
+    suspend fun setStartPageWallpaperUri(uri: String?) {
+        context.dataStore.edit { preferences ->
+            if (uri != null) {
+                preferences[PreferenceKeys.START_PAGE_WALLPAPER_URI] = uri
+            } else {
+                preferences.remove(PreferenceKeys.START_PAGE_WALLPAPER_URI)
+            }
+        }
+    }
+
+    suspend fun setStartPageBlurAmount(amount: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.START_PAGE_BLUR_AMOUNT] = amount.toString()
         }
     }
 }

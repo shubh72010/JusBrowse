@@ -12,7 +12,7 @@ import com.jusdots.jusbrowse.data.models.HistoryItem
         com.jusdots.jusbrowse.data.models.DownloadItem::class,
         com.jusdots.jusbrowse.data.models.SiteSettings::class
     ],
-    version = 5, // Incremented due to schema mismatch reported in logs
+    version = 6, // Incremented for DownloadItem.systemDownloadId
     exportSchema = false
 )
 abstract class BrowserDatabase : RoomDatabase() {

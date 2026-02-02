@@ -21,6 +21,7 @@ import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
 fun BrowserToolBar(
     viewModel: BrowserViewModel,
     currentTab: BrowserTab?,
+    onOpenAirlockGallery: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -146,6 +147,14 @@ fun BrowserToolBar(
                                 showMenu = false
                             },
                             leadingIcon = { Icon(Icons.Default.Settings, null) }
+                        )
+                        Divider()
+                        DropdownMenuItem(
+                            text = { Text("📸 Airlock Gallery") },
+                            onClick = { 
+                                onOpenAirlockGallery()
+                                showMenu = false
+                            }
                         )
                     }
                 }

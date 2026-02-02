@@ -1,0 +1,437 @@
+package com.jusdots.jusbrowse.ui.components
+
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+
+@Composable
+fun AirlockViewer(
+    url: String,
+    mimeType: String,
+    onDismiss: () -> Unit,
+    onDownload: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BackHandler {
+        onDismiss()
+    }
+    
+    // Immersive container
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = Color.Black
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            when {
+                mimeType.startsWith("image/") -> ImageAirlock(url)
+                mimeType.startsWith("video/") -> VideoAirlock(url)
+                mimeType.startsWith("audio/") -> AudioAirlock(url)
+                else -> UnsupportedMedia(mimeType)
+            }
+            
+            // Top Bar with gradient for visibility
+            AirlockTopBar(
+                onDownload = { onDownload(url) },
+                onClose = onDismiss
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImageAirlock(url: String) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    
+    val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+        scale = (scale * zoomChange).coerceIn(1f, 5f)
+        if (scale > 1f) {
+            offset += offsetChange
+        } else {
+            offset = Offset.Zero
+        }
+    }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    scale = (scale * zoom).coerceIn(1f, 5f)
+                    if (scale > 1f) {
+                        offset += pan
+                    } else {
+                        offset = Offset.Zero
+                    }
+                }
+            }
+            .transformable(state = state),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(url)
+                .crossfade(true)
+                .build(),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offset.x,
+                    translationY = offset.y
+                ),
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+@Composable
+private fun VideoAirlock(url: String) {
+    val context = LocalContext.current
+    var showControls by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var position by remember { mutableLongStateOf(0L) }
+    var isBuffering by remember { mutableStateOf(true) }
+
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+            prepare()
+            playWhenReady = true
+            
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    isBuffering = playbackState == Player.STATE_BUFFERING
+                    if (playbackState == Player.STATE_READY) {
+                        duration = this@apply.duration
+                    }
+                }
+                override fun onIsPlayingChanged(playing: Boolean) {
+                    isPlaying = playing
+                }
+            })
+        }
+    }
+    
+    LaunchedEffect(exoPlayer) {
+        while (isActive) {
+            position = exoPlayer.currentPosition
+            delay(500)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { exoPlayer.release() }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { showControls = !showControls }
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = false
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (isBuffering) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        // Custom Video Controls
+        AnimatedVisibility(
+            visible = showControls,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+            ) {
+                // Center Play/Pause
+                IconButton(
+                    onClick = { if (isPlaying) exoPlayer.pause() else exoPlayer.play() },
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(80.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.2f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+
+                // Bottom Controls
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                            )
+                        )
+                        .navigationBarsPadding()
+                        .padding(bottom = 32.dp, start = 16.dp, end = 16.dp)
+                ) {
+                    Slider(
+                        value = position.toFloat(),
+                        onValueChange = { exoPlayer.seekTo(it.toLong()) },
+                        valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        )
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = formatTime(position),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                        Text(
+                            text = formatTime(duration),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioAirlock(url: String) {
+    val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var position by remember { mutableLongStateOf(0L) }
+    
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+            prepare()
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_READY) duration = this@apply.duration
+                }
+                override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+            })
+        }
+    }
+    
+    LaunchedEffect(exoPlayer) {
+        while (isActive) {
+            position = exoPlayer.currentPosition
+            delay(200)
+        }
+    }
+    
+    DisposableEffect(Unit) {
+        onDispose { exoPlayer.release() }
+    }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .size(240.dp)
+                .clip(RoundedCornerShape(32.dp)),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.GraphicEq,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(120.dp)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(48.dp))
+        
+        Text(
+            text = "Airlock Streaming",
+            color = Color.White,
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontWeight = FontWeight.Bold,
+                shadow = Shadow(Color.Black, Offset(2f, 2f), 4f)
+            )
+        )
+        Text(
+            text = "Secured Media Feed",
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Slider(
+            value = position.toFloat(),
+            onValueChange = { exoPlayer.seekTo(it.toLong()) },
+            valueRange = 0f..(if (duration > 0) duration.toFloat() else 1f),
+            modifier = Modifier.fillMaxWidth(0.9f)
+        )
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(0.9f),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(formatTime(position), color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+            Text(formatTime(duration), color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            IconButton(onClick = { exoPlayer.seekTo(position - 10000) }) {
+                Icon(Icons.Default.Replay10, null, tint = Color.White, modifier = Modifier.size(32.dp))
+            }
+            
+            IconButton(
+                onClick = { if (isPlaying) exoPlayer.pause() else exoPlayer.play() },
+                modifier = Modifier
+                    .size(84.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+            
+            IconButton(onClick = { exoPlayer.seekTo(position + 10000) }) {
+                Icon(Icons.Default.FastForward, null, tint = Color.White, modifier = Modifier.size(32.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun UnsupportedMedia(mimeType: String) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.Photo, null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Preview unavailable", color = Color.White)
+            Text(mimeType, color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun AirlockTopBar(
+    onDownload: () -> Unit,
+    onClose: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent)
+                )
+            )
+            .statusBarsPadding()
+            .padding(16.dp)
+    ) {
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier.align(Alignment.CenterStart)
+        ) {
+            Icon(Icons.Default.Close, "Close", tint = Color.White)
+        }
+        
+        IconButton(
+            onClick = onDownload,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f), CircleShape)
+        ) {
+            Icon(Icons.Default.Download, "Download", tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+private fun formatTime(millis: Long): String {
+    val seconds = (millis / 1000).toInt()
+    val minutes = seconds / 60
+    val secs = seconds % 60
+    return "%02d:%02d".format(minutes, secs)
+}

@@ -79,6 +79,12 @@ dependencies {
     // JSON Serialization
     implementation(libs.gson)
     
+    // Airlock Media Viewer Dependencies
+    implementation("io.coil-kt:coil-compose:2.6.0")             // Image loading for Compose
+    implementation("androidx.media3:media3-exoplayer:1.9.1")    // Core ExoPlayer
+    implementation("androidx.media3:media3-ui:1.9.1")           // ExoPlayer UI components
+    implementation("androidx.media3:media3-common:1.9.1")       // Media3 common functionality
+    
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
