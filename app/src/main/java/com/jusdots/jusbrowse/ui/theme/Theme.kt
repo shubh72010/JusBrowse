@@ -31,6 +31,8 @@ fun JusBrowse2Theme(
     dynamicColor: Boolean = false,
     themePreset: String = "SYSTEM",
     amoledBlackEnabled: Boolean = false,
+    wallColor: Color? = null,
+    appFont: String = "SYSTEM",
     content: @Composable () -> Unit
 ) {
     val preset = try {
@@ -40,6 +42,26 @@ fun JusBrowse2Theme(
     }
 
     val colorScheme = when (preset) {
+        BrowserTheme.WALL_THEME -> {
+            val seed = wallColor ?: BrowserPrimary
+            if (darkTheme) {
+                darkColorScheme(
+                    primary = seed,
+                    secondary = seed.copy(alpha = 0.8f),
+                    tertiary = seed.copy(alpha = 0.6f),
+                    background = Color(0xFF1A1A1A),
+                    surface = Color(0xFF242424)
+                )
+            } else {
+                lightColorScheme(
+                    primary = seed,
+                    secondary = seed.copy(alpha = 0.8f),
+                    tertiary = seed.copy(alpha = 0.6f),
+                    background = seed.copy(alpha = 0.05f),
+                    surface = Color.White
+                )
+            }
+        }
         BrowserTheme.MATERIAL_YOU -> {
             // Material You dynamic colors (Android 12+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -90,9 +112,16 @@ fun JusBrowse2Theme(
         colorScheme
     }
 
+    val selectedAppFont = try {
+        AppFont.valueOf(appFont)
+    } catch (e: Exception) {
+        AppFont.SYSTEM
+    }
+
     MaterialTheme(
         colorScheme = finalColorScheme,
-        typography = Typography,
+        typography = getTypography(selectedAppFont.fontFamily),
+        shapes = Shapes,
         content = content
     )
 }

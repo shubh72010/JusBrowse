@@ -13,8 +13,8 @@ object DownloadValidator {
      * Dangerous file extensions that should be blocked or warned about
      */
     private val dangerousExtensions = setOf(
-        // Android
-        "apk", "aab", "dex",
+        // Android (Allowed now, but still careful)
+        "dex",
         // Executables
         "exe", "msi", "bat", "cmd", "com", "scr", "pif",
         // Scripts
@@ -31,7 +31,8 @@ object DownloadValidator {
     private val warnExtensions = setOf(
         "zip", "rar", "7z", "tar", "gz",
         "iso", "img", "dmg",
-        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"
+        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+        "apk", "aab"
     )
 
     data class DownloadValidationResult(
@@ -127,7 +128,12 @@ object DownloadValidator {
 
     private fun buildWarningMessage(fileName: String, contentLength: Long): String {
         val sizeStr = formatFileSize(contentLength)
-        return "Download $fileName ($sizeStr)?\n\nMake sure you trust this file before opening it."
+        val extension = getFileExtension(fileName).lowercase()
+        return if (extension == "apk" || extension == "aab") {
+            "⚠️ This file ($fileName) is an Android App.\n\nInstalling apps from unknown sources can be dangerous. Only download if you trust this site.\n\nSize: $sizeStr"
+        } else {
+            "Download $fileName ($sizeStr)?\n\nMake sure you trust this file before opening it."
+        }
     }
 
     private fun formatFileSize(bytes: Long): String {

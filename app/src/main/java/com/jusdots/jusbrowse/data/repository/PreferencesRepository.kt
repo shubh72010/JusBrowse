@@ -42,6 +42,13 @@ class PreferencesRepository(private val context: Context) {
         val BOTTOM_ADDRESS_BAR_ENABLED = booleanPreferencesKey("bottom_address_bar_enabled")
         val START_PAGE_WALLPAPER_URI = stringPreferencesKey("start_page_wallpaper_uri")
         val START_PAGE_BLUR_AMOUNT = stringPreferencesKey("start_page_blur_amount")
+        
+        // Engines
+        val DEFAULT_ENGINE_ENABLED = booleanPreferencesKey("default_engine_enabled")
+        val JUS_FAKE_ENGINE_ENABLED = booleanPreferencesKey("jus_fake_engine_enabled")
+        val RANDOMISER_ENGINE_ENABLED = booleanPreferencesKey("randomiser_engine_enabled")
+        val MULTI_MEDIA_PLAYBACK_ENABLED = booleanPreferencesKey("multi_media_playback_enabled")
+        val APP_FONT = stringPreferencesKey("app_font")
     }
 
     val searchEngine: Flow<String> = context.dataStore.data.map { preferences ->
@@ -299,6 +306,57 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setStartPageBlurAmount(amount: Float) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.START_PAGE_BLUR_AMOUNT] = amount.toString()
+        }
+    }
+
+    // Engines
+    val defaultEngineEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.DEFAULT_ENGINE_ENABLED] ?: true
+    }
+
+    val jusFakeEngineEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.JUS_FAKE_ENGINE_ENABLED] ?: false
+    }
+
+    val randomiserEngineEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.RANDOMISER_ENGINE_ENABLED] ?: false
+    }
+
+    val multiMediaPlaybackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.MULTI_MEDIA_PLAYBACK_ENABLED] ?: false
+    }
+
+    val appFont: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.APP_FONT] ?: "SYSTEM"
+    }
+
+    suspend fun setDefaultEngineEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.DEFAULT_ENGINE_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setJusFakeEngineEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.JUS_FAKE_ENGINE_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setRandomiserEngineEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.RANDOMISER_ENGINE_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setMultiMediaPlaybackEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.MULTI_MEDIA_PLAYBACK_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setAppFont(font: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.APP_FONT] = font
         }
     }
 }

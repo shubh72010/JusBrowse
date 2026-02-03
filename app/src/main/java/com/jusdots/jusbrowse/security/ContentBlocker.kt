@@ -31,7 +31,7 @@ class ContentBlocker(context: Context) {
         }
     }
 
-    suspend fun shouldBlock(url: String): Boolean {
+    suspend fun shouldBlock(url: String, onTrackerBlocked: (String) -> Unit = {}): Boolean {
         val uri = try {
             Uri.parse(url)
         } catch (e: Exception) {
@@ -41,11 +41,15 @@ class ContentBlocker(context: Context) {
         val host = uri.host?.lowercase() ?: return false
         
         // 1. Check direct host/domain matches
-        if (isDomainBlocked(host)) return true
+        if (isDomainBlocked(host)) {
+            onTrackerBlocked(host)
+            return true
+        }
         
         // 2. CNAME Uncloaking: Check if the underlying domain is blocked
         val cnameTarget = DnsResolver.resolveCname(host)
         if (cnameTarget != null && isDomainBlocked(cnameTarget)) {
+            onTrackerBlocked(cnameTarget)
             return true
         }
         

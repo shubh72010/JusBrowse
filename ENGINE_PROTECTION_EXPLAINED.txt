@@ -1,0 +1,40 @@
+# JusBrowse Fingerprinting Protection Engines
+
+JusBrowse offers three distinct engines to protect your digital privacy. Only one engine can be active at a time to ensure maximum coherence and performance.
+
+---
+
+## 🛡️ Default Engine (Base Protection)
+**Strategy: Minimalist Blocking**
+The Default Engine provides a baseline level of privacy by blocking or standardizing high-entropy browser APIs that are commonly used for tracking.
+
+- **API Blocking**: Restricts access to sensitive properties like `navigator.deviceMemory`, `navigator.hardwareConcurrency`, and the Battery Status API.
+- **Header Injection**: Notifies websites of your preference for privacy via standard headers.
+- **Best For**: Users who want standard privacy with maximum website compatibility.
+
+---
+
+## 🎭 JusFake Engine (The Mirage)
+**Strategy: Deterministic Spoofing (Persona-Based)**
+The JusFake Engine (powered by Priv8 and RL Engines) completely replaces your real device signals with a predefined "Fake Identity" or Persona.
+
+- **Flattening (Priv8)**: Real device data is first "pushed" into realistic generic buckets (e.g., rounding ultra-high-res screen dimensions to standard ones).
+- **Glowing (RLEngine)**: The flattened data is then "mapped" to a specific Digital Persona. If your persona is a "Chrome on Windows" user, the engine ensures all JS calls return values consistent with that identity.
+- **Hardware Spoofing**: Spoofs User-Agent, Platform, CPU cores, RAM, and even Screen resolution to match the chosen persona.
+- **Best For**: Users who want to hide among a specific crowd or appear as a completely different device.
+
+---
+
+## 🦎 Randomiser Engine (The Chameleon)
+**Strategy: Advanced Farbling (Brave-Like)**
+Inspired by Brave’s "Farbling" technology, this engine adds domain-aware, session-based noise to break fingerprint stability.
+
+- **Domain-Specific Entropy**: Automatically generates a unique fingerprint *per website* using a cryptographic seed combined with the hostname. This prevents trackers from linking your activity across different domains.
+- **Micro-Canvas Noise**: Injects microscopic, invisible jitter into `getImageData`, `toDataURL`, and `toBlob`. This ensures your canvas hash is unique to every site but visually perfect.
+- **Seeded Audio Jitter**: Subtly alters AudioBuffer data and Analyser frequency data using a per-site PRNG.
+- **WebGL Farbling**: Masks hardware renderer info and adds noise to `readPixels` buffers.
+- **Navigator "Space Trick"**: Appends a random number of trailing spaces to your User-Agent string to break exact string matching.
+- **Hardware Shuffling**: Randomizes the order of `enumerateDevices` and adds jitter to Screen resolution properties.
+- **Plug-in Standardisation**: Spoofs a standard list of Chrome/Edge PDF plugins to hide your real plugin configuration.
+- **Battery & Hardware Lockdown**: Standardizes RAM/Core counts and returns static "Full Charge" battery states.
+- **Best For**: Maximum privacy and tracking resistance without adopting a static Persona.

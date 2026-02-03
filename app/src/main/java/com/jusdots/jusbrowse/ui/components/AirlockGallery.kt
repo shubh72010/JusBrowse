@@ -37,40 +37,36 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-
-data class MediaData(
-    val images: List<MediaItem> = emptyList(),
-    val videos: List<MediaItem> = emptyList(),
-    val audio: List<MediaItem> = emptyList()
-) {
-    fun isEmpty() = images.isEmpty() && videos.isEmpty() && audio.isEmpty()
-}
-
-data class MediaItem(
-    val url: String,
-    val title: String = "",
-    val metadata: String = ""
-)
+import kotlinx.coroutines.launch
 
 @Composable
 fun AirlockGallery(
     mediaData: MediaData,
-    onMediaClick: (url: String, mimeType: String) -> Unit,
+    onMediaClick: (url: String, mimeType: String, list: List<MediaItem>, index: Int) -> Unit,
     onClose: () -> Unit,
+    isVaulting: Boolean = false,
+    vaultProgress: Float = 0f,
     modifier: Modifier = Modifier
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    
-    BackHandler {
-        onClose()
-    }
-    
     val tabs = listOf(
         "Images" to mediaData.images.size,
         "Videos" to mediaData.videos.size,
         "Audio" to mediaData.audio.size
     )
     
+    val galleryPagerState = androidx.compose.foundation.pager.rememberPagerState(
+        pageCount = { tabs.size }
+    )
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Sync tab selection with pager
+    LaunchedEffect(galleryPagerState.currentPage) {
+        // Just let it sync via state
+    }
+    BackHandler {
+        onClose()
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -108,6 +104,41 @@ fun AirlockGallery(
                 )
             }
         }
+
+        // Vaulting Progress
+        androidx.compose.animation.AnimatedVisibility(visible = isVaulting) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        progress = { vaultProgress },
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 3.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Vaulting & Isolating Media... ${(vaultProgress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { vaultProgress },
+                    modifier = Modifier.fillMaxWidth().clip(CircleShape),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                )
+            }
+        }
         
         // Empty state
         if (mediaData.isEmpty()) {
@@ -133,15 +164,15 @@ fun AirlockGallery(
         
         // Tab row
         ScrollableTabRow(
-            selectedTabIndex = selectedTab,
+            selectedTabIndex = galleryPagerState.currentPage,
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary,
             edgePadding = 16.dp,
             divider = {},
             indicator = { tabPositions ->
-                if (selectedTab < tabPositions.size) {
+                if (galleryPagerState.currentPage < tabPositions.size) {
                     TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[galleryPagerState.currentPage]),
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -149,13 +180,17 @@ fun AirlockGallery(
         ) {
             tabs.forEachIndexed { index, pair ->
                 Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
+                    selected = galleryPagerState.currentPage == index,
+                    onClick = { 
+                        coroutineScope.launch {
+                            galleryPagerState.animateScrollToPage(index)
+                        }
+                    },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = pair.first,
-                                style = if (selectedTab == index) 
+                                style = if (galleryPagerState.currentPage == index) 
                                     MaterialTheme.typography.titleSmall 
                                 else 
                                     MaterialTheme.typography.bodyMedium
@@ -165,7 +200,7 @@ fun AirlockGallery(
                                     modifier = Modifier
                                         .padding(start = 6.dp)
                                         .background(
-                                            if (selectedTab == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                            if (galleryPagerState.currentPage == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                                             CircleShape
                                         )
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -173,7 +208,7 @@ fun AirlockGallery(
                                     Text(
                                         text = pair.second.toString(),
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (selectedTab == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (galleryPagerState.currentPage == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -183,32 +218,30 @@ fun AirlockGallery(
             }
         }
         
-        // Content based on selected tab with animation
-        AnimatedContent(
-            targetState = selectedTab,
-            transitionSpec = {
-                if (targetState > initialState) {
-                    slideInHorizontally { width -> width } + fadeIn() togetherWith
-                            slideOutHorizontally { width -> -width } + fadeOut()
-                } else {
-                    slideInHorizontally { width -> -width } + fadeIn() togetherWith
-                            slideOutHorizontally { width -> width } + fadeOut()
-                }.using(SizeTransform(clip = false))
-            },
-            label = "TabContentAnimation"
+        // Content with HorizontalPager for swiping between tabs
+        androidx.compose.foundation.pager.HorizontalPager(
+            state = galleryPagerState,
+            modifier = Modifier.weight(1f),
+            userScrollEnabled = true
         ) { targetTab ->
             when (targetTab) {
                 0 -> ImageGrid(
                     images = mediaData.images,
-                    onImageClick = { onMediaClick(it, "image/*") }
+                    onImageClick = { index -> 
+                        onMediaClick(mediaData.images[index].url, "image/*", mediaData.images, index) 
+                    }
                 )
                 1 -> VideoList(
                     videos = mediaData.videos,
-                    onVideoClick = { onMediaClick(it, "video/*") }
+                    onVideoClick = { index -> 
+                        onMediaClick(mediaData.videos[index].url, "video/*", mediaData.videos, index) 
+                    }
                 )
                 2 -> AudioList(
                     audio = mediaData.audio,
-                    onAudioClick = { onMediaClick(it, "audio/*") }
+                    onAudioClick = { index -> 
+                        onMediaClick(mediaData.audio[index].url, "audio/*", mediaData.audio, index) 
+                    }
                 )
             }
         }
@@ -218,7 +251,7 @@ fun AirlockGallery(
 @Composable
 private fun ImageGrid(
     images: List<MediaItem>,
-    onImageClick: (String) -> Unit
+    onImageClick: (Int) -> Unit
 ) {
     if (images.isEmpty()) {
         EmptyMediaState("The gallery is empty")
@@ -237,9 +270,9 @@ private fun ImageGrid(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onImageClick(item.url) },
-                shape = RoundedCornerShape(12.dp),
+                    .clip(RoundedCornerShape(24.dp))
+                    .clickable { onImageClick(images.indexOf(item)) },
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                 )
@@ -263,7 +296,7 @@ private fun ImageGrid(
 @Composable
 private fun VideoList(
     videos: List<MediaItem>,
-    onVideoClick: (String) -> Unit
+    onVideoClick: (Int) -> Unit
 ) {
     if (videos.isEmpty()) {
         EmptyMediaState("No videos in the airlock")
@@ -280,8 +313,8 @@ private fun VideoList(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onVideoClick(item.url) },
-                shape = RoundedCornerShape(16.dp),
+                    .clickable { onVideoClick(videos.indexOf(item)) },
+                shape = RoundedCornerShape(32.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                 )
@@ -295,7 +328,7 @@ private fun VideoList(
                     Box(
                         modifier = Modifier
                             .size(60.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(24.dp))
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
@@ -343,7 +376,7 @@ private fun VideoList(
 @Composable
 private fun AudioList(
     audio: List<MediaItem>,
-    onAudioClick: (String) -> Unit
+    onAudioClick: (Int) -> Unit
 ) {
     if (audio.isEmpty()) {
         EmptyMediaState("Silence in the airlock")
@@ -360,7 +393,7 @@ private fun AudioList(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onAudioClick(item.url) },
+                    .clickable { onAudioClick(audio.indexOf(item)) },
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)

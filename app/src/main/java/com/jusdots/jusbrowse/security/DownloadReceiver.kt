@@ -47,10 +47,35 @@ class DownloadReceiver(
                         
                         // Trigger Scan
                         performSecurityScan(downloadId, fileName, filePath)
+
+                        // AUTO-OPEN APK: "Just opens the app, no popup"
+                        if (fileName.lowercase().endsWith(".apk")) {
+                            installApk(context, filePath)
+                        }
                     }
                 }
             }
             cursor.close()
+        }
+    }
+
+    private fun installApk(context: Context, filePath: String) {
+        try {
+            val file = java.io.File(filePath)
+            if (!file.exists()) return
+
+            val intent = Intent(Intent.ACTION_VIEW)
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file
+            )
+            intent.setDataAndType(uri, "application/vnd.android.package-archive")
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

@@ -121,7 +121,7 @@ private fun TabChip(
 ) {
     Surface(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(androidx.compose.foundation.shape.CircleShape)
             .clickable(onClick = onClick),
         color = if (isActive) {
             MaterialTheme.colorScheme.primaryContainer

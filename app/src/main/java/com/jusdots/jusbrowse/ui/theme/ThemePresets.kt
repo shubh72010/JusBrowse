@@ -6,7 +6,8 @@ import androidx.compose.ui.graphics.Color
 
 enum class BrowserTheme {
     SYSTEM,
-    MATERIAL_YOU,  // Dynamic color from wallpaper (Android 12+)
+    MATERIAL_YOU,
+    WALL_THEME,
     VIVALDI_RED,
     OCEAN_BLUE,
     FOREST_GREEN,

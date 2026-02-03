@@ -196,8 +196,10 @@ fun BrowserScreen(
         if (viewModel.showGallery && viewModel.galleryMediaData != null) {
             AirlockGallery(
                 mediaData = viewModel.galleryMediaData!!,
-                onMediaClick = { url, mimeType ->
-                    viewModel.openAirlockViewer(url, mimeType)
+                isVaulting = viewModel.isVaulting,
+                vaultProgress = viewModel.vaultProgress,
+                onMediaClick = { url, mimeType, list, index ->
+                    viewModel.openAirlockViewer(url, mimeType, list, index)
                     viewModel.showGallery = false
                 },
                 onClose = { viewModel.closeAirlock() },
@@ -208,9 +210,14 @@ fun BrowserScreen(
         // Airlock Media Viewer Overlay (Global)
         if (viewModel.showAirlock) {
             AirlockViewer(
-                url = viewModel.airlockUrl,
-                mimeType = viewModel.airlockMimeType,
-                onDismiss = { viewModel.closeAirlock() },
+                initialUrl = viewModel.airlockUrl,
+                initialMimeType = viewModel.airlockMimeType,
+                mediaList = viewModel.viewerMediaList,
+                initialIndex = viewModel.viewerInitialIndex,
+                onDismiss = { 
+                    viewModel.showAirlock = false
+                    viewModel.showGallery = true 
+                },
                 onDownload = { url ->
                     viewModel.startDownload(context, url, android.webkit.URLUtil.guessFileName(url, null, null))
                 },

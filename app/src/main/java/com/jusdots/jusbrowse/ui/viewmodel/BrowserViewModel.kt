@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.jusdots.jusbrowse.ui.components.MediaData
+import com.jusdots.jusbrowse.ui.components.MediaItem
+import com.jusdots.jusbrowse.data.models.TrackerInfo
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.lifecycle.AndroidViewModel
@@ -96,6 +98,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val bottomAddressBarEnabled = preferencesRepository.bottomAddressBarEnabled
     val startPageWallpaperUri = preferencesRepository.startPageWallpaperUri
     val startPageBlurAmount = preferencesRepository.startPageBlurAmount
+    
+    // Engines
+    val defaultEngineEnabled = preferencesRepository.defaultEngineEnabled
+    val jusFakeEngineEnabled = preferencesRepository.jusFakeEngineEnabled
+    val randomiserEngineEnabled = preferencesRepository.randomiserEngineEnabled
+    val multiMediaPlaybackEnabled = preferencesRepository.multiMediaPlaybackEnabled
+    val appFont = preferencesRepository.appFont
+
+    // WallTheme Color Extraction
+    private val _extractedWallColor = MutableStateFlow<androidx.compose.ui.graphics.Color?>(null)
+    val extractedWallColor: StateFlow<androidx.compose.ui.graphics.Color?> = _extractedWallColor.asStateFlow()
 
     // Multi-View Mode
     private val _isMultiViewMode = MutableStateFlow(false)
@@ -126,16 +139,47 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     
     var showGallery by mutableStateOf(false)
     var galleryMediaData by mutableStateOf<MediaData?>(null)
+    var isVaulting by mutableStateOf(false)
+    var vaultProgress by mutableStateOf(0f)
     
-    fun openAirlockViewer(url: String, mimeType: String) {
+    // Tracker Visualization
+    val blockedTrackers = mutableStateMapOf<String, SnapshotStateList<TrackerInfo>>()
+
+    fun recordBlockedTracker(tabId: String, domain: String) {
+        val list = blockedTrackers.getOrPut(tabId) { mutableStateListOf() }
+        // Keep only unique domains per tab for visualization simplicity, or all with timestamps
+        if (list.none { it.domain == domain }) {
+            list.add(0, TrackerInfo(domain))
+        }
+    }
+    
+    // Viewer State
+    var viewerMediaList by mutableStateOf<List<MediaItem>>(emptyList())
+    var viewerInitialIndex by mutableStateOf(0)
+    
+    fun openAirlockViewer(url: String, mimeType: String, list: List<MediaItem> = emptyList(), index: Int = 0) {
         airlockUrl = url
         airlockMimeType = mimeType
+        viewerMediaList = list
+        viewerInitialIndex = index
         showAirlock = true
     }
     
     fun openAirlockGallery(data: MediaData) {
         galleryMediaData = data
-        showGallery = true
+        showGallery = true // Show the UI immediately
+        
+        // Start isolation process in background
+        viewModelScope.launch {
+            isVaulting = true
+            vaultProgress = 0f
+            val context = getApplication<Application>()
+            val vaultedData = com.jusdots.jusbrowse.utils.AirlockVaultManager.processAndVaultMedia(context, data) { current, total ->
+                vaultProgress = current.toFloat() / total.toFloat()
+            }
+            galleryMediaData = vaultedData
+            isVaulting = false
+        }
     }
     
     fun closeAirlock() {
@@ -149,6 +193,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             loadSession()
             // Sync timezone with network for airtight spoofing
             com.jusdots.jusbrowse.security.FakeModeManager.syncTimezoneWithNetwork(this)
+        }
+        
+        // Watch for wallpaper changes to extract color
+        viewModelScope.launch {
+            startPageWallpaperUri.collect { uri ->
+                if (uri != null) {
+                    extractColorFromUri(uri)
+                } else {
+                    _extractedWallColor.value = null
+                }
+            }
         }
     }
 
@@ -404,6 +459,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         
         if (index in tabs.indices) {
             val tab = tabs[index]
+            // Clear trackers for the new navigation
+            blockedTrackers.remove(tab.id)
+            
             val updatedTab = tab.copy(url = normalizedUrl)
             updateTab(index, updatedTab)
             
@@ -548,6 +606,52 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun extractColorFromUri(uriString: String) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                val uri = android.net.Uri.parse(uriString)
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val options = android.graphics.BitmapFactory.Options().apply {
+                    inJustDecodeBounds = false
+                    inSampleSize = 8 // Downsample for speed
+                }
+                val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream, null, options)
+                inputStream?.close()
+
+                if (bitmap != null) {
+                    // Extract color from center area or average
+                    // Using center 10x10 area average
+                    val centerX = bitmap.width / 2
+                    val centerY = bitmap.height / 2
+                    
+                    var r = 0L
+                    var g = 0L
+                    var b = 0L
+                    var count = 0
+                    
+                    for (x in (centerX - 5).coerceAtLeast(0) until (centerX + 5).coerceAtMost(bitmap.width)) {
+                        for (y in (centerY - 5).coerceAtLeast(0) until (centerY + 5).coerceAtMost(bitmap.height)) {
+                            val pixel = bitmap.getPixel(x, y)
+                            r += android.graphics.Color.red(pixel)
+                            g += android.graphics.Color.green(pixel)
+                            b += android.graphics.Color.blue(pixel)
+                            count++
+                        }
+                    }
+                    
+                    if (count > 0) {
+                        val finalColor = android.graphics.Color.rgb((r/count).toInt(), (g/count).toInt(), (b/count).toInt())
+                        _extractedWallColor.value = androidx.compose.ui.graphics.Color(finalColor)
+                    }
+                    bitmap.recycle()
+                }
+            } catch (e: Exception) {
+                // Ignore errors
+            }
+        }
+    }
+
     fun setStartPageBlurAmount(amount: Float) {
         viewModelScope.launch {
             preferencesRepository.setStartPageBlurAmount(amount)
@@ -593,6 +697,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun setCookieBlockerEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setCookieBlockerEnabled(enabled)
+        }
+    }
+
+    fun setMultiMediaPlaybackEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setMultiMediaPlaybackEnabled(enabled)
+        }
+    }
+
+    fun setAppFont(font: String) {
+        viewModelScope.launch {
+            preferencesRepository.setAppFont(font)
         }
     }
 
@@ -668,6 +784,43 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // Engines
+    fun setDefaultEngineEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            if (enabled) {
+                preferencesRepository.setDefaultEngineEnabled(true)
+                preferencesRepository.setRandomiserEngineEnabled(false)
+                preferencesRepository.setJusFakeEngineEnabled(false)
+            } else {
+                preferencesRepository.setDefaultEngineEnabled(false)
+            }
+        }
+    }
+
+    fun setJusFakeEngineEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            if (enabled) {
+                preferencesRepository.setJusFakeEngineEnabled(true)
+                preferencesRepository.setRandomiserEngineEnabled(false)
+                preferencesRepository.setDefaultEngineEnabled(false)
+            } else {
+                preferencesRepository.setJusFakeEngineEnabled(false)
+            }
+        }
+    }
+
+    fun setRandomiserEngineEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            if (enabled) {
+                preferencesRepository.setRandomiserEngineEnabled(true)
+                preferencesRepository.setDefaultEngineEnabled(false)
+                preferencesRepository.setJusFakeEngineEnabled(false)
+            } else {
+                preferencesRepository.setRandomiserEngineEnabled(false)
+            }
+        }
+    }
+
     // Site Settings
     fun updateSiteSettings(settings: com.jusdots.jusbrowse.data.models.SiteSettings) {
         viewModelScope.launch {
@@ -727,6 +880,24 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun startDownload(context: android.content.Context, url: String, fileName: String) {
+        if (url.startsWith("/")) {
+            // Local file (Vaulted)
+            viewModelScope.launch {
+                try {
+                    val source = java.io.File(url)
+                    val destDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                    if (!destDir.exists()) destDir.mkdirs()
+                    val destFile = java.io.File(destDir, fileName)
+                    source.copyTo(destFile, overwrite = true)
+                    
+                    addDownload(fileName, "internal://vaulted", destFile.absolutePath, source.length())
+                    android.widget.Toast.makeText(context, "Saved to Downloads", android.widget.Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(context, "Export failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            return
+        }
         try {
             val uri = android.net.Uri.parse(url)
             val request = android.app.DownloadManager.Request(uri)

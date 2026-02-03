@@ -89,7 +89,7 @@ fun JavaScriptIndicator(
 
     Box(
         modifier = modifier
-            .background(backgroundColor, RoundedCornerShape(4.dp))
+            .background(backgroundColor, CircleShape)
             .padding(horizontal = 4.dp, vertical = 2.dp)
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         contentAlignment = Alignment.Center
@@ -113,7 +113,7 @@ fun PrivateTabIndicator(
         modifier = modifier
             .background(
                 Color(0xFF6B4EE6).copy(alpha = 0.2f),
-                RoundedCornerShape(4.dp)
+                CircleShape
             )
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -145,7 +145,7 @@ fun MixedContentWarning(
         modifier = modifier
             .background(
                 Color(0xFFFF9800).copy(alpha = 0.2f),
-                RoundedCornerShape(4.dp)
+                CircleShape
             )
             .padding(horizontal = 6.dp, vertical = 2.dp)
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),

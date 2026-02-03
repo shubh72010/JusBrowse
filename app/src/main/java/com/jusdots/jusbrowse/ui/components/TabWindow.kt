@@ -84,10 +84,16 @@ fun TabWindow(
     val cookieBlockerEnabled by viewModel.cookieBlockerEnabled.collectAsStateWithLifecycle(initialValue = false)
     val popupBlockerEnabled by viewModel.popupBlockerEnabled.collectAsStateWithLifecycle(initialValue = true)
     val bottomAddressBarEnabled by viewModel.bottomAddressBarEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val multiMediaPlaybackEnabled by viewModel.multiMediaPlaybackEnabled.collectAsStateWithLifecycle(initialValue = false)
     
     // Fake Mode state
     val fakeModeEnabled by FakeModeManager.isEnabled.collectAsStateWithLifecycle()
     val currentPersona by FakeModeManager.currentPersona.collectAsStateWithLifecycle()
+
+    // Engines
+    val defaultEngineEnabled by viewModel.defaultEngineEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val jusFakeEnabled by viewModel.jusFakeEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val randomiserEnabled by viewModel.randomiserEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
     
     // Fake Mode dialogs
     var showFakeModeDialog by remember { mutableStateOf(false) }
@@ -269,10 +275,10 @@ fun TabWindow(
             .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
             .zIndex(windowState.zIndex)
             .size(360.dp * scale, 600.dp * scale)
-            .shadow(16.dp, RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-            .clip(RoundedCornerShape(12.dp))
+            .shadow(16.dp, RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(28.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(28.dp))
             .clickable { onFocus() }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -607,6 +613,7 @@ fun TabWindow(
                                      settings.databaseEnabled = true
                                      settings.loadWithOverviewMode = true
                                      settings.useWideViewPort = true
+                                     settings.mediaPlaybackRequiresUserGesture = !multiMediaPlaybackEnabled
                                      
                                      // Security settings
                                      settings.safeBrowsingEnabled = true
@@ -738,7 +745,11 @@ fun TabWindow(
                                       // LAYER 7: Inject Fingerprinting Protection
                                       // Uses Fake Mode persona if enabled, else generic protection
                                       // ==============================
-                                      val fingerprintScript = FakeModeManager.generateFingerprintScript()
+                                      val fingerprintScript = FakeModeManager.generateFingerprintScript(
+                                           defaultEnabled = defaultEngineEnabled,
+                                           jusFakeEnabled = jusFakeEnabled,
+                                           randomiserEnabled = randomiserEnabled
+                                       )
                                       view?.evaluateJavascript(fingerprintScript, null)
                                       
                                       // Cookie Pop-up Blocker

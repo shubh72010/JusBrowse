@@ -175,15 +175,20 @@ object FakeModeManager {
     }
 
     /**
-     * Generate JS injection script for fingerprinting protection
+     * Generate JS injection script for fingerprinting protection based on active engine
      */
-    fun generateFingerprintScript(): String {
-        val persona = if (_isEnabled.value) _currentPersona.value else null
+    fun generateFingerprintScript(
+        defaultEnabled: Boolean = true,
+        jusFakeEnabled: Boolean = false,
+        randomiserEnabled: Boolean = false
+    ): String {
+        val persona = if (jusFakeEnabled) _currentPersona.value else null
         
-        return if (persona != null) {
-            generatePersonaScript(persona)
-        } else {
-            FingerprintingProtection.getProtectionScript(1337)
+        return when {
+            jusFakeEnabled && persona != null -> generatePersonaScript(persona)
+            randomiserEnabled -> RandomiserEngine.generateScript((System.currentTimeMillis() % 10000).toInt())
+            defaultEnabled -> FingerprintingProtection.getProtectionScript(1337)
+            else -> FingerprintingProtection.minimalProtectionScript
         }
     }
 

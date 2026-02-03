@@ -222,9 +222,9 @@ private fun PersonaOption(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(backgroundColor)
-            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
+            .border(2.dp, borderColor, RoundedCornerShape(24.dp))
             .clickable(onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -260,7 +260,8 @@ private fun PersonaPreview(persona: FakePersona) {
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(
             modifier = Modifier.padding(12.dp)
@@ -313,7 +314,7 @@ fun FakeModeIndicator(
 ) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(CircleShape)
             .background(Color(0xFF7C4DFF).copy(alpha = 0.15f))
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 4.dp),

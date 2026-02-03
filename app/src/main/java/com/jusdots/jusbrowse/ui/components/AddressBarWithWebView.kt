@@ -53,6 +53,7 @@ import android.os.Build
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.runBlocking
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddressBarWithWebView(
     viewModel: BrowserViewModel,
@@ -66,6 +67,11 @@ fun AddressBarWithWebView(
     val follianMode by viewModel.follianMode.collectAsStateWithLifecycle(initialValue = false)
     val bottomAddressBarEnabled by viewModel.bottomAddressBarEnabled.collectAsStateWithLifecycle(initialValue = false)
     
+    // Engines
+    val defaultEngineEnabled by viewModel.defaultEngineEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val jusFakeEnabled by viewModel.jusFakeEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val randomiserEnabled by viewModel.randomiserEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+    
     // Local state for the address bar text - initialized with current URL
     // CRITICAL: Observe current tab's URL specifically, not the global flow
     var urlText by remember(tab?.url) { mutableStateOf(tab?.url?.replace("about:blank", "") ?: "") }
@@ -73,13 +79,16 @@ fun AddressBarWithWebView(
     val focusManager = LocalFocusManager.current
     var isDragging by remember { mutableStateOf(false) }
 
-    // Download warning dialog state
+    val context = LocalContext.current
+    
+    // Download confirmation states
     var showDownloadWarning by remember { mutableStateOf(false) }
     var pendingDownloadInfo by remember { mutableStateOf<com.jusdots.jusbrowse.security.DownloadValidator.DownloadValidationResult?>(null) }
     var pendingDownloadUrl by remember { mutableStateOf("") }
-    val context = LocalContext.current
     
     var showMenu by remember { mutableStateOf(false) }
+    var showTrackerDetails by remember { mutableStateOf(false) }
+    val trackers = if (tab != null) viewModel.blockedTrackers[tab.id] ?: emptyList() else emptyList()
 
     @Composable
     fun AddressBarRow() {
@@ -89,7 +98,7 @@ fun AddressBarWithWebView(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .background(
                     color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(24.dp)
+                    shape = androidx.compose.foundation.shape.CircleShape
                 )
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -104,15 +113,28 @@ fun AddressBarWithWebView(
                 )
             } else {
                 IconButton(
-                    onClick = { /* Could show security details */ },
+                    onClick = { if (trackers.isNotEmpty()) showTrackerDetails = true },
                     modifier = Modifier.size(24.dp)
                 ) {
-                    Icon(
-                        imageVector = if (tab?.url?.startsWith("https") == true) Icons.Default.Lock else Icons.Default.LockOpen,
-                        contentDescription = "Security",
-                        modifier = Modifier.size(16.dp),
-                        tint = if (tab?.url?.startsWith("https") == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                    )
+                    BadgedBox(
+                        badge = {
+                            if (trackers.isNotEmpty()) {
+                                Badge(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ) {
+                                    Text(trackers.size.toString())
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (trackers.isNotEmpty()) Icons.Default.Shield else Icons.Default.ShieldMoon,
+                            contentDescription = "Trackers",
+                            modifier = Modifier.size(18.dp),
+                            tint = if (trackers.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
                 }
             }
             // Text Field
@@ -230,7 +252,6 @@ fun AddressBarWithWebView(
                                      addJavascriptInterface(com.jusdots.jusbrowse.security.FakeModeManager.PrivacyBridge(), "jusPrivacyBridge")
                                      
                                      setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
-                                         // Post to main thread to show dialog
                                          val validation = com.jusdots.jusbrowse.security.DownloadValidator.validateDownload(
                                              url, userAgent, contentDisposition, mimeType, contentLength
                                          )
@@ -280,7 +301,11 @@ fun AddressBarWithWebView(
                                              val url = request?.url?.toString() ?: return null
                                              
                                              // 1. Ad Blocking
-                                              if (adBlockEnabled && runBlocking { viewModel.contentBlocker.shouldBlock(url) }) {
+                                              if (adBlockEnabled && runBlocking { 
+                                                  viewModel.contentBlocker.shouldBlock(url) { domain ->
+                                                      viewModel.recordBlockedTracker(tab.id, domain)
+                                                  } 
+                                              }) {
                                                   return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
                                               }
                                              
@@ -296,7 +321,11 @@ fun AddressBarWithWebView(
                                               }
                                               
                                               // 3. Inject Persona Fingerprints (Early)
-                                              val script = com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript()
+                                              val script = com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript(
+                                                  defaultEnabled = defaultEngineEnabled,
+                                                  jusFakeEnabled = jusFakeEnabled,
+                                                  randomiserEnabled = randomiserEnabled
+                                              )
                                               view?.evaluateJavascript(script, null)
 
                                               // 4. Reset cache mode after force-refresh
@@ -313,7 +342,11 @@ fun AddressBarWithWebView(
                                          }
                                          override fun onPageFinished(view: WebView?, url: String?) {
                                               // Re-inject to ensure persistence after some dynamic loads
-                                              val script = com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript()
+                                              val script = com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript(
+                                                  defaultEnabled = defaultEngineEnabled,
+                                                  jusFakeEnabled = jusFakeEnabled,
+                                                  randomiserEnabled = randomiserEnabled
+                                              )
                                               view?.evaluateJavascript(script, null)
 
                                               viewModel.updateTabLoadingState(tabIndex, false)
@@ -494,18 +527,29 @@ fun AddressBarWithWebView(
             }
         }
         
-        // Download Warning Dialog
+
+        
+
+        // Download Confirmation Dialog
         if (showDownloadWarning && pendingDownloadInfo != null) {
             AlertDialog(
                 onDismissRequest = { showDownloadWarning = false },
-                title = { Text("Download Security") },
-                text = { Text(pendingDownloadInfo!!.warningMessage ?: "Do you want to download ${pendingDownloadInfo!!.fileName}?") },
+                title = { Text("Download File") },
+                text = { 
+                    Column {
+                        Text(pendingDownloadInfo!!.warningMessage ?: "Do you want to download this file?")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = pendingDownloadInfo!!.fileName,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
                 confirmButton = {
                     Button(
                         onClick = {
-                            if (pendingDownloadInfo!!.isAllowed) {
-                                viewModel.startDownload(context, pendingDownloadUrl, pendingDownloadInfo!!.fileName)
-                            }
+                            viewModel.startDownload(context, pendingDownloadUrl, pendingDownloadInfo!!.fileName)
                             showDownloadWarning = false
                         }
                     ) {
@@ -519,8 +563,73 @@ fun AddressBarWithWebView(
                 }
             )
         }
+    }
 
-        
-
+    if (showTrackerDetails && tab != null) {
+        val trackers = viewModel.blockedTrackers[tab.id] ?: emptyList()
+        ModalBottomSheet(
+            onDismissRequest = { showTrackerDetails = false },
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .navigationBarsPadding()
+            ) {
+                Text(
+                    text = "Trackers Blocked",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "JusBrowse has blocked ${trackers.size} unwanted connection requests from this page to protect your privacy.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                if (trackers.isEmpty()) {
+                    Text("No trackers detected on this page yet.")
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(trackers.size) { index ->
+                            val tracker = trackers[index]
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Block,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = tracker.domain,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
     }
 }

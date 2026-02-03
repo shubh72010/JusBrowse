@@ -37,7 +37,8 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material.icons.filled.Image
 import coil.compose.AsyncImage
-
+import com.jusdots.jusbrowse.ui.theme.BrowserTheme
+import com.jusdots.jusbrowse.ui.theme.AppFont
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,7 +61,15 @@ fun SettingsScreen(
     val koodousApiKey by viewModel.koodousApiKey.collectAsStateWithLifecycle(initialValue = "")
     val follianMode by viewModel.follianMode.collectAsStateWithLifecycle(initialValue = false)
     val amoledBlackEnabled by viewModel.amoledBlackEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val appFont by viewModel.appFont.collectAsStateWithLifecycle(initialValue = "SYSTEM")
     val bottomAddressBarEnabled by viewModel.bottomAddressBarEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val wallColorExtracted by viewModel.extractedWallColor.collectAsStateWithLifecycle()
+
+    // Engines
+    val defaultEngineEnabled by viewModel.defaultEngineEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val jusFakeEngineEnabled by viewModel.jusFakeEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val randomiserEngineEnabled by viewModel.randomiserEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val multiMediaPlaybackEnabled by viewModel.multiMediaPlaybackEnabled.collectAsStateWithLifecycle(initialValue = false)
     
     // Fake Mode state
     val fakeModeEnabled by FakeModeManager.isEnabled.collectAsStateWithLifecycle()
@@ -76,6 +85,7 @@ fun SettingsScreen(
             onDismiss = { showFakeModeDialog = false },
             onEnable = { persona ->
                 FakeModeManager.enableFakeMode(context, persona)
+                viewModel.setJusFakeEngineEnabled(true)
                 showFakeModeDialog = false
             }
         )
@@ -288,19 +298,34 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.primary
             )
             
-            // 🎭 Fake Mode Card
+            // 🛡️ Protection Engines
+            Text(
+                text = "Fingerprinting Protection Engines",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            SettingsSwitch(
+                title = "Default Engine",
+                subtitle = "Standard JusBrowse fingerprinting protection",
+                checked = defaultEngineEnabled,
+                onCheckedChange = { viewModel.setDefaultEngineEnabled(it) }
+            )
+
+            // 🎭 JusFake Engine Card (replaces old Fake Mode card)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        if (fakeModeEnabled) {
-                            FakeModeManager.disableFakeMode(context)
+                        if (jusFakeEngineEnabled) {
+                            viewModel.setJusFakeEngineEnabled(false)
                         } else {
                             showFakeModeDialog = true
                         }
                     },
                 colors = CardDefaults.cardColors(
-                    containerColor = if (fakeModeEnabled) 
+                    containerColor = if (jusFakeEngineEnabled) 
                         Color(0xFF7C4DFF).copy(alpha = 0.1f) 
                     else 
                         MaterialTheme.colorScheme.surfaceVariant
@@ -318,7 +343,7 @@ fun SettingsScreen(
                             .size(48.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
-                                if (fakeModeEnabled) Color(0xFF7C4DFF) 
+                                if (jusFakeEngineEnabled) Color(0xFF7C4DFF) 
                                 else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                             ),
                         contentAlignment = Alignment.Center
@@ -330,11 +355,11 @@ fun SettingsScreen(
                     
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Fake Mode",
+                            text = "JusFake Engine",
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium
                         )
-                        if (fakeModeEnabled && currentPersona != null) {
+                        if (jusFakeEngineEnabled && currentPersona != null) {
                             Text(
                                 text = "${currentPersona!!.flagEmoji} ${currentPersona!!.displayName}",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -342,7 +367,7 @@ fun SettingsScreen(
                             )
                         } else {
                             Text(
-                                text = "Create a fake browser identity",
+                                text = "Priv8 + RLEngine (Persona Based)",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -350,17 +375,24 @@ fun SettingsScreen(
                     }
                     
                     Switch(
-                        checked = fakeModeEnabled,
+                        checked = jusFakeEngineEnabled,
                         onCheckedChange = {
                             if (it) {
                                 showFakeModeDialog = true
                             } else {
-                                FakeModeManager.disableFakeMode(context)
+                                viewModel.setJusFakeEngineEnabled(false)
                             }
                         }
                     )
                 }
             }
+
+            SettingsSwitch(
+                title = "Randomiser Engine",
+                subtitle = "Brave-style randomized fingerprinting protection",
+                checked = randomiserEngineEnabled,
+                onCheckedChange = { viewModel.setRandomiserEngineEnabled(it) }
+            )
 
             SettingsSwitch(
                 title = "Enable JavaScript",
@@ -411,6 +443,13 @@ fun SettingsScreen(
                 onCheckedChange = { viewModel.setPopupBlockerEnabled(it) }
             )
 
+            SettingsSwitch(
+                title = "Multi-Media Playback",
+                subtitle = "Allow multiple tabs to play audio/video simultaneously",
+                checked = multiMediaPlaybackEnabled,
+                onCheckedChange = { viewModel.setMultiMediaPlaybackEnabled(it) }
+            )
+
             // 🚫 Follian Mode - Hard JS Kill
             SettingsSwitch(
                 title = "Follian Mode (JS Off)",
@@ -446,6 +485,7 @@ fun SettingsScreen(
                     ThemePreviewItem(
                         theme = theme,
                         isSelected = themePreset == theme.name,
+                        wallColor = wallColorExtracted,
                         onClick = { viewModel.setThemePreset(theme.name) }
                     )
                 }
@@ -458,6 +498,69 @@ fun SettingsScreen(
                 checked = darkMode,
                 onCheckedChange = { viewModel.setDarkMode(it) }
             )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // Font Selection
+            Text(
+                text = "Application Font",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "Choose a font style for the browser interface (Live Preview)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(AppFont.values().size) { index ->
+                    val font = AppFont.values()[index]
+                    val isSelected = appFont == font.name
+                    
+                    Surface(
+                        onClick = { viewModel.setAppFont(font.name) },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+                        modifier = Modifier
+                            .width(140.dp)
+                            .height(100.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "Ag",
+                                style = androidx.compose.ui.text.TextStyle(
+                                    fontFamily = font.fontFamily,
+                                    fontSize = 28.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = font.displayName,
+                                style = androidx.compose.ui.text.TextStyle(
+                                    fontFamily = font.fontFamily,
+                                    fontSize = 12.sp
+                                ),
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
 
             if (darkMode) {
                 SettingsSwitch(
@@ -550,23 +653,25 @@ fun SettingsSwitch(
 fun ThemePreviewItem(
     theme: com.jusdots.jusbrowse.ui.theme.BrowserTheme,
     isSelected: Boolean,
+    wallColor: Color? = null,
     onClick: () -> Unit
 ) {
     val color = when (theme) {
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.VIVALDI_RED -> Color(0xFFD32F2F)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.OCEAN_BLUE -> Color(0xFF0288D1)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.FOREST_GREEN -> Color(0xFF388E3C)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.MIDNIGHT_PURPLE -> Color(0xFF7B1FA2)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.SUNSET_ORANGE -> Color(0xFFF57C00)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.ABYSS_BLACK -> Color(0xFF000000)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.NORD_ICE -> Color(0xFF5E81AC)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.DRACULA -> Color(0xFFBD93F9)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.SOLARIZED -> Color(0xFF268BD2)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.CYBERPUNK -> Color(0xFFFF00FF)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.MINT_FRESH -> Color(0xFF00BFA5)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.ROSE_GOLD -> Color(0xFFB76E79)
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.SYSTEM -> MaterialTheme.colorScheme.primary
-        com.jusdots.jusbrowse.ui.theme.BrowserTheme.MATERIAL_YOU -> Color(0xFF6750A4) // Material You purple
+        BrowserTheme.VIVALDI_RED -> Color(0xFFD32F2F)
+        BrowserTheme.OCEAN_BLUE -> Color(0xFF0288D1)
+        BrowserTheme.FOREST_GREEN -> Color(0xFF388E3C)
+        BrowserTheme.MIDNIGHT_PURPLE -> Color(0xFF7B1FA2)
+        BrowserTheme.SUNSET_ORANGE -> Color(0xFFF57C00)
+        BrowserTheme.ABYSS_BLACK -> Color(0xFF000000)
+        BrowserTheme.NORD_ICE -> Color(0xFF5E81AC)
+        BrowserTheme.DRACULA -> Color(0xFFBD93F9)
+        BrowserTheme.SOLARIZED -> Color(0xFF268BD2)
+        BrowserTheme.CYBERPUNK -> Color(0xFFFF00FF)
+        BrowserTheme.MINT_FRESH -> Color(0xFF00BFA5)
+        BrowserTheme.ROSE_GOLD -> Color(0xFFB76E79)
+        BrowserTheme.SYSTEM -> MaterialTheme.colorScheme.primary
+        BrowserTheme.MATERIAL_YOU -> Color(0xFF6750A4)
+        BrowserTheme.WALL_THEME -> wallColor ?: Color(0xFF3F51B5)
     }
 
     Column(

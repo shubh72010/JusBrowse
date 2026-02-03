@@ -150,7 +150,8 @@ fun BrowserToolBar(
                         )
                         Divider()
                         DropdownMenuItem(
-                            text = { Text("📸 Airlock Gallery") },
+                            text = { Text("Airlock Gallery") },
+                            leadingIcon = { Icon(Icons.Default.Security, contentDescription = null) },
                             onClick = { 
                                 onOpenAirlockGallery()
                                 showMenu = false

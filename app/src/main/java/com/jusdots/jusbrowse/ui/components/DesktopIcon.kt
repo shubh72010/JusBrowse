@@ -41,7 +41,7 @@ fun DesktopIcon(
         Box(
             modifier = Modifier
                 .size(48.dp)
-                .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                .background(Color.White.copy(alpha = 0.2f), androidx.compose.foundation.shape.CircleShape)
                 .padding(8.dp),
             contentAlignment = Alignment.Center
         ) {

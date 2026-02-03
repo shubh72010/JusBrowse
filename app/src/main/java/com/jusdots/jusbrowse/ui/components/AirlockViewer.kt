@@ -1,5 +1,6 @@
 package com.jusdots.jusbrowse.ui.components
 
+
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -34,7 +35,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -42,18 +42,27 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun AirlockViewer(
-    url: String,
-    mimeType: String,
     onDismiss: () -> Unit,
     onDownload: (String) -> Unit,
+    initialUrl: String = "",
+    initialMimeType: String = "",
+    mediaList: List<MediaItem> = emptyList(),
+    initialIndex: Int = 0,
     modifier: Modifier = Modifier
 ) {
     BackHandler {
         onDismiss()
     }
+    
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(
+        initialPage = if (initialIndex in mediaList.indices) initialIndex else 0,
+        pageCount = { mediaList.size.coerceAtLeast(1) }
+    )
+    val scope = rememberCoroutineScope()
     
     // Immersive container
     Surface(
@@ -61,18 +70,123 @@ fun AirlockViewer(
         color = Color.Black
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            when {
-                mimeType.startsWith("image/") -> ImageAirlock(url)
-                mimeType.startsWith("video/") -> VideoAirlock(url)
-                mimeType.startsWith("audio/") -> AudioAirlock(url)
-                else -> UnsupportedMedia(mimeType)
+            if (mediaList.isNotEmpty()) {
+                androidx.compose.foundation.pager.HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    pageSpacing = 16.dp,
+                    key = { page -> if (page < mediaList.size) mediaList[page].url else page }
+                ) { page ->
+                    val item = mediaList[page]
+                    val itemMimeType = when {
+                        item.url.contains(".webp") || item.url.contains(".jpg") || item.url.contains(".png") -> "image/"
+                        item.url.contains(".mp4") || item.url.contains(".webm") || item.url.contains("vid_") -> "video/"
+                        item.url.contains(".mp3") || item.url.contains(".wav") || item.url.contains("aud_") -> "audio/"
+                        else -> initialMimeType // Fallback to passed mimetype
+                    }
+                    
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        when {
+                            itemMimeType.startsWith("image/") -> ImageAirlock(item.url)
+                            itemMimeType.startsWith("video/") -> VideoAirlock(item.url)
+                            itemMimeType.startsWith("audio/") -> AudioAirlock(item.url)
+                            else -> UnsupportedMedia(itemMimeType)
+                        }
+                    }
+                }
+            } else {
+                // Fallback for single item (Legacy)
+                when {
+                    initialMimeType.startsWith("image/") -> ImageAirlock(initialUrl)
+                    initialMimeType.startsWith("video/") -> VideoAirlock(initialUrl)
+                    initialMimeType.startsWith("audio/") -> AudioAirlock(initialUrl)
+                    else -> UnsupportedMedia(initialMimeType)
+                }
             }
             
-            // Top Bar with gradient for visibility
+            // Top Bar
+            val currentUrl = if (mediaList.isNotEmpty()) mediaList[pagerState.currentPage].url else initialUrl
             AirlockTopBar(
-                onDownload = { onDownload(url) },
+                onDownload = { onDownload(currentUrl) },
                 onClose = onDismiss
             )
+
+            // Page Indicator (Bottom)
+            if (mediaList.size > 1) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 32.dp + 48.dp) // Above controls if any, or just safe area
+                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "${pagerState.currentPage + 1} / ${mediaList.size}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                
+                // Navigation Buttons (Left/Right)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.Center)
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left Button
+                    if (pagerState.currentPage > 0) {
+                        Surface(
+                            onClick = { 
+                                scope.launch {
+                                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                                }
+                            },
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.3f),
+                            contentColor = Color.White,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowBackIosNew,
+                                    contentDescription = "Previous",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.size(48.dp))
+                    }
+
+                    // Right Button
+                    if (pagerState.currentPage < mediaList.size - 1) {
+                        Surface(
+                            onClick = { 
+                                scope.launch {
+                                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                                }
+                            },
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.3f),
+                            contentColor = Color.White,
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowForwardIos,
+                                    contentDescription = "Next",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.size(48.dp))
+                    }
+                }
+            }
         }
     }
 }
@@ -91,20 +205,20 @@ private fun ImageAirlock(url: String) {
         }
     }
     
+    // Reset offset when scale returns to 1
+    LaunchedEffect(scale) {
+        if (scale <= 1f) {
+            offset = Offset.Zero
+        }
+    }
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 5f)
-                    if (scale > 1f) {
-                        offset += pan
-                    } else {
-                        offset = Offset.Zero
-                    }
-                }
-            }
-            .transformable(state = state),
+            .transformable(
+                state = state,
+                lockRotationOnZoomPan = true
+            ),
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(
@@ -134,10 +248,16 @@ private fun VideoAirlock(url: String) {
     var duration by remember { mutableLongStateOf(0L) }
     var position by remember { mutableLongStateOf(0L) }
     var isBuffering by remember { mutableStateOf(true) }
+    var isMuted by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+            val uri = if (url.startsWith("/")) {
+                Uri.fromFile(java.io.File(url))
+            } else {
+                Uri.parse(url)
+            }
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
             prepare()
             playWhenReady = true
             
@@ -258,6 +378,21 @@ private fun VideoAirlock(url: String) {
                             style = MaterialTheme.typography.labelMedium
                         )
                     }
+
+                    // Mute Button for Video
+                    IconButton(
+                        onClick = { 
+                            isMuted = !isMuted
+                            exoPlayer.volume = if (isMuted) 0f else 1f
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Icon(
+                            imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                            contentDescription = "Mute",
+                            tint = Color.White
+                        )
+                    }
                 }
             }
         }
@@ -270,10 +405,16 @@ private fun AudioAirlock(url: String) {
     var isPlaying by remember { mutableStateOf(false) }
     var duration by remember { mutableLongStateOf(0L) }
     var position by remember { mutableLongStateOf(0L) }
+    var isMuted by remember { mutableStateOf(false) }
     
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+            val uri = if (url.startsWith("/")) {
+                Uri.fromFile(java.io.File(url))
+            } else {
+                Uri.parse(url)
+            }
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
             prepare()
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -379,6 +520,23 @@ private fun AudioAirlock(url: String) {
             IconButton(onClick = { exoPlayer.seekTo(position + 10000) }) {
                 Icon(Icons.Default.FastForward, null, tint = Color.White, modifier = Modifier.size(32.dp))
             }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        IconButton(
+            onClick = { 
+                isMuted = !isMuted
+                exoPlayer.volume = if (isMuted) 0f else 1f
+            },
+            modifier = Modifier.size(48.dp)
+        ) {
+            Icon(
+                imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                contentDescription = "Mute",
+                tint = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.size(28.dp)
+            )
         }
     }
 }
