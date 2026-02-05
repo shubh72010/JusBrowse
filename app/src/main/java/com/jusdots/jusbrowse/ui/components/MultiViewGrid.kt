@@ -8,8 +8,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.google.gson.Gson
 import com.jusdots.jusbrowse.data.models.BrowserTab
+import com.jusdots.jusbrowse.ui.components.MediaData
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
+import com.jusdots.jusbrowse.utils.MediaExtractor
 
 @Composable
 fun MultiViewGrid(
@@ -99,6 +102,24 @@ private fun GridCell(
         AddressBarWithWebView(
             viewModel = viewModel,
             tabIndex = tabIndex,
+            onOpenAirlockGallery = {
+                viewModel.getWebView(tab.id)?.evaluateJavascript(MediaExtractor.EXTRACT_MEDIA_SCRIPT) { result ->
+                    if (result != null && result != "null") {
+                        try {
+                            val json = if (result.startsWith("\"") && result.endsWith("\"")) {
+                                result.substring(1, result.length - 1)
+                                    .replace("\\\"", "\"")
+                                    .replace("\\\\", "\\")
+                            } else result
+                            
+                            val data = Gson().fromJson(json, MediaData::class.java)
+                            viewModel.openAirlockGallery(data)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            },
             modifier = Modifier.fillMaxSize()
         )
     }

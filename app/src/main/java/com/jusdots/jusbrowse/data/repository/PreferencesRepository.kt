@@ -49,6 +49,7 @@ class PreferencesRepository(private val context: Context) {
         val RANDOMISER_ENGINE_ENABLED = booleanPreferencesKey("randomiser_engine_enabled")
         val MULTI_MEDIA_PLAYBACK_ENABLED = booleanPreferencesKey("multi_media_playback_enabled")
         val APP_FONT = stringPreferencesKey("app_font")
+        val BACKGROUND_PRESET = stringPreferencesKey("background_preset")
     }
 
     val searchEngine: Flow<String> = context.dataStore.data.map { preferences ->
@@ -330,6 +331,10 @@ class PreferencesRepository(private val context: Context) {
         preferences[PreferenceKeys.APP_FONT] ?: "SYSTEM"
     }
 
+    val backgroundPreset: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.BACKGROUND_PRESET] ?: "NONE"
+    }
+
     suspend fun setDefaultEngineEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.DEFAULT_ENGINE_ENABLED] = enabled
@@ -357,6 +362,12 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setAppFont(font: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.APP_FONT] = font
+        }
+    }
+
+    suspend fun setBackgroundPreset(preset: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.BACKGROUND_PRESET] = preset
         }
     }
 }

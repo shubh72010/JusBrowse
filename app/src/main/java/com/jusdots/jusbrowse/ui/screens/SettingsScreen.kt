@@ -3,6 +3,8 @@ package com.jusdots.jusbrowse.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.filled.Image
 import coil.compose.AsyncImage
 import com.jusdots.jusbrowse.ui.theme.BrowserTheme
 import com.jusdots.jusbrowse.ui.theme.AppFont
+import com.jusdots.jusbrowse.ui.theme.BackgroundPreset
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,8 +87,7 @@ fun SettingsScreen(
         FakeModeDialog(
             onDismiss = { showFakeModeDialog = false },
             onEnable = { persona ->
-                FakeModeManager.enableFakeMode(context, persona)
-                viewModel.setJusFakeEngineEnabled(true)
+                viewModel.activateJusFakeEngine(context, persona)
                 showFakeModeDialog = false
             }
         )
@@ -286,6 +288,36 @@ fun SettingsScreen(
                         Icon(Icons.Default.Image, null, modifier = Modifier.padding(end = 8.dp))
                         Text("Select Wallpaper Image")
                     }
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // Background Presets
+            val backgroundPreset by viewModel.backgroundPreset.collectAsStateWithLifecycle(initialValue = "NONE")
+            Text(
+                text = "Background Presets",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Text(
+                text = "Add animated gradients to your browser interface",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(com.jusdots.jusbrowse.ui.theme.BackgroundPreset.values().size) { index ->
+                    val preset = com.jusdots.jusbrowse.ui.theme.BackgroundPreset.values()[index]
+                    BackgroundPresetCard(
+                        preset = preset,
+                        isSelected = backgroundPreset == preset.name,
+                        onClick = { viewModel.setBackgroundPreset(preset.name) }
+                    )
                 }
             }
 
@@ -701,6 +733,68 @@ fun ThemePreviewItem(
         Text(
             text = theme.name.replace("_", " ").toLowerCase().capitalize(),
             style = MaterialTheme.typography.labelSmall
+        )
+    }
+}
+
+@Composable
+private fun BackgroundPresetCard(
+    preset: BackgroundPreset,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(80.dp, 60.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .then(
+                    if (isSelected) Modifier.border(
+                        2.dp,
+                        MaterialTheme.colorScheme.primary,
+                        RoundedCornerShape(8.dp)
+                    )
+                    else Modifier
+                )
+        ) {
+            // Mini preview of the background
+            com.jusdots.jusbrowse.ui.components.BackgroundRenderer(
+                preset = preset,
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Transparent overlay to capture clicks (WebView steals them otherwise)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onClick)
+            )
+
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                            CircleShape
+                        )
+                        .padding(4.dp)
+                        .size(16.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = preset.displayName,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1
         )
     }
 }

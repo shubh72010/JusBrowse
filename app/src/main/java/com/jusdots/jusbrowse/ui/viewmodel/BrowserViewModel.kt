@@ -27,6 +27,7 @@ import com.jusdots.jusbrowse.data.models.DownloadItem
 import com.jusdots.jusbrowse.data.models.Shortcut
 import com.jusdots.jusbrowse.ui.screens.Screen
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -98,6 +99,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val bottomAddressBarEnabled = preferencesRepository.bottomAddressBarEnabled
     val startPageWallpaperUri = preferencesRepository.startPageWallpaperUri
     val startPageBlurAmount = preferencesRepository.startPageBlurAmount
+    val backgroundPreset = preferencesRepository.backgroundPreset
     
     // Engines
     val defaultEngineEnabled = preferencesRepository.defaultEngineEnabled
@@ -141,6 +143,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     var galleryMediaData by mutableStateOf<MediaData?>(null)
     var isVaulting by mutableStateOf(false)
     var vaultProgress by mutableStateOf(0f)
+    
+
     
     // Tracker Visualization
     val blockedTrackers = mutableStateMapOf<String, SnapshotStateList<TrackerInfo>>()
@@ -603,6 +607,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun setStartPageWallpaperUri(uri: String?) {
         viewModelScope.launch {
             preferencesRepository.setStartPageWallpaperUri(uri)
+            if (uri != null) {
+                preferencesRepository.setBackgroundPreset("NONE")
+            }
         }
     }
 
@@ -655,6 +662,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun setStartPageBlurAmount(amount: Float) {
         viewModelScope.launch {
             preferencesRepository.setStartPageBlurAmount(amount)
+        }
+    }
+
+    fun setBackgroundPreset(preset: String) {
+        viewModelScope.launch {
+            preferencesRepository.setBackgroundPreset(preset)
+            if (preset != "NONE") {
+                preferencesRepository.setStartPageWallpaperUri(null)
+            }
         }
     }
 
@@ -800,12 +816,29 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun setJusFakeEngineEnabled(enabled: Boolean) {
         viewModelScope.launch {
             if (enabled) {
+                // If enabling, we don't do it here anymore, we use activateJusFakeEngine from UI
+                // to handle the restart/context correctly. 
+                // However, for consistency, we update preferences.
                 preferencesRepository.setJusFakeEngineEnabled(true)
                 preferencesRepository.setRandomiserEngineEnabled(false)
                 preferencesRepository.setDefaultEngineEnabled(false)
             } else {
                 preferencesRepository.setJusFakeEngineEnabled(false)
             }
+        }
+    }
+
+    fun activateJusFakeEngine(context: android.content.Context, persona: com.jusdots.jusbrowse.security.FakePersona) {
+        viewModelScope.launch {
+            // 1. Save preferences FIRST and Wait
+            preferencesRepository.setJusFakeEngineEnabled(true)
+            preferencesRepository.setRandomiserEngineEnabled(false)
+            preferencesRepository.setDefaultEngineEnabled(false)
+            
+            // 2. Important: Sync other states if needed
+            
+            // 3. Trigger the restart through FakeModeManager
+            com.jusdots.jusbrowse.security.FakeModeManager.enableFakeMode(context, persona)
         }
     }
 
@@ -953,4 +986,5 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             pinShortcut(currentTab.title.ifEmpty { currentTab.url }, currentTab.url)
         }
     }
+
 }

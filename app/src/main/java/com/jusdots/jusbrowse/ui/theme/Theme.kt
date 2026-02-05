@@ -2,14 +2,18 @@ package com.jusdots.jusbrowse.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.jusdots.jusbrowse.ui.components.BackgroundRenderer
 
 private val DarkColorScheme = darkColorScheme(
     primary = BrowserPrimary,
@@ -33,6 +37,7 @@ fun JusBrowse2Theme(
     amoledBlackEnabled: Boolean = false,
     wallColor: Color? = null,
     appFont: String = "SYSTEM",
+    backgroundPreset: String = "NONE",
     content: @Composable () -> Unit
 ) {
     val preset = try {
@@ -118,10 +123,14 @@ fun JusBrowse2Theme(
         AppFont.SYSTEM
     }
 
+    // Note: Background presets are now rendered on the start page only
+    // See AddressBarWithWebView.kt for start page wallpaper implementation
+
     MaterialTheme(
         colorScheme = finalColorScheme,
         typography = getTypography(selectedAppFont.fontFamily),
-        shapes = Shapes,
-        content = content
-    )
+        shapes = Shapes
+    ) {
+        content()
+    }
 }

@@ -93,13 +93,7 @@ fun BrowserScreen(
             // Only show Bottom/Top bar when NOT in Multi-View (Windowed) mode?
             // User requested "Individual controls", so global toolbar is redundant in window mode.
             if (!bottomAddressBarEnabled) {
-                if (!isMultiView) {
-                    BrowserToolBar(
-                        viewModel = viewModel,
-                        currentTab = if (activeTabIndex in tabs.indices) tabs[activeTabIndex] else null,
-                        onOpenAirlockGallery = { openAirlockGallery() }
-                    )
-                } else {
+                if (isMultiView) {
                     // In Multi-View, keep a minimal toolbar
                     BrowserToolBar(
                         viewModel = viewModel,
@@ -107,18 +101,13 @@ fun BrowserScreen(
                         onOpenAirlockGallery = { openAirlockGallery() }
                     )
                 }
+                // Single View uses Pill Bar inside AddressBarWithWebView, so no TopBar here
             }
         },
         bottomBar = {
             Column {
                 if (!isMultiView) {
-                    if (bottomAddressBarEnabled) {
-                        BrowserToolBar(
-                            viewModel = viewModel,
-                            currentTab = if (activeTabIndex in tabs.indices) tabs[activeTabIndex] else null,
-                            onOpenAirlockGallery = { openAirlockGallery() }
-                        )
-                    }
+                    // Bottom Address Bar is now handled inside AddressBarWithWebView for Single View
                     
                     BottomTabBar(
                         tabs = tabs,
@@ -157,6 +146,7 @@ fun BrowserScreen(
                         AddressBarWithWebView(
                             viewModel = viewModel,
                             tabIndex = activeTabIndex,
+                            onOpenAirlockGallery = { openAirlockGallery() },
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(paddingValues)

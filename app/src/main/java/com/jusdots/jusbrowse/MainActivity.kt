@@ -59,13 +59,15 @@ class MainActivity : ComponentActivity() {
             val amoledBlackEnabled by viewModel.amoledBlackEnabled.collectAsStateWithLifecycle(initialValue = false)
             val wallColor by viewModel.extractedWallColor.collectAsStateWithLifecycle()
             val appFont by viewModel.appFont.collectAsStateWithLifecycle(initialValue = "SYSTEM")
+            val backgroundPreset by viewModel.backgroundPreset.collectAsStateWithLifecycle(initialValue = "NONE")
 
             JusBrowse2Theme(
                 darkTheme = darkMode,
                 themePreset = themePreset,
                 amoledBlackEnabled = amoledBlackEnabled,
                 wallColor = wallColor,
-                appFont = appFont
+                appFont = appFont,
+                backgroundPreset = backgroundPreset
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
