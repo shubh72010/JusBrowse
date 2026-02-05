@@ -42,8 +42,9 @@ fun FakeModeDialog(
                 .padding(16.dp),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            )
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+            ),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
         ) {
             Column(
                 modifier = Modifier
@@ -208,9 +209,9 @@ private fun PersonaOption(
     onClick: () -> Unit
 ) {
     val backgroundColor = if (isSelected) {
-        MaterialTheme.colorScheme.primaryContainer
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
     } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
     }
 
     val borderColor = if (isSelected) {
@@ -349,7 +350,11 @@ fun PersonaDetailsDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            shape = RoundedCornerShape(24.dp)
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+            ),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
         ) {
             Column(
                 modifier = Modifier

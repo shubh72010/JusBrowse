@@ -83,7 +83,6 @@ fun TabWindow(
     val doNotTrackEnabled by viewModel.doNotTrackEnabled.collectAsStateWithLifecycle(initialValue = false)
     val cookieBlockerEnabled by viewModel.cookieBlockerEnabled.collectAsStateWithLifecycle(initialValue = false)
     val popupBlockerEnabled by viewModel.popupBlockerEnabled.collectAsStateWithLifecycle(initialValue = true)
-    val bottomAddressBarEnabled by viewModel.bottomAddressBarEnabled.collectAsStateWithLifecycle(initialValue = false)
     val multiMediaPlaybackEnabled by viewModel.multiMediaPlaybackEnabled.collectAsStateWithLifecycle(initialValue = false)
     
     // Fake Mode state
@@ -339,9 +338,8 @@ fun TabWindow(
                 }
             }
 
-            if (!bottomAddressBarEnabled) {
-                // In-Window Navigation Controls (Address Bar + Nav Buttons + Security Indicators)
-                Row(
+            // In-Window Navigation Controls (Address Bar + Nav Buttons + Security Indicators)
+            Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(4.dp)
@@ -450,7 +448,6 @@ fun TabWindow(
                                 }
                             )
                         }
-                    }
                 }
             }
             
@@ -826,122 +823,8 @@ fun TabWindow(
 
             }
 
-            // Bottom Address Bar (when enabled)
-            if (bottomAddressBarEnabled) {
-                // In-Window Navigation Controls (Address Bar + Nav Buttons + Security Indicators)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(4.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-                        .padding(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Back
-                    IconButton(
-                        onClick = {
-                            viewModel.getWebView(tab.id)?.goBack()
-                        },
-                        modifier = Modifier.size(32.dp),
-                        enabled = tab.canGoBack
-                    ) {
-                        Icon(Icons.Default.ArrowBack, "Back", modifier = Modifier.size(16.dp))
-                    }
-
-                    // Forward
-                    IconButton(
-                        onClick = {
-                            viewModel.getWebView(tab.id)?.goForward()
-                        },
-                        modifier = Modifier.size(32.dp),
-                        enabled = tab.canGoForward
-                    ) {
-                        Icon(Icons.Default.ArrowForward, "Forward", modifier = Modifier.size(16.dp))
-                    }
-
-                    // Security Lock Icon (Layer 10)
-                    SecurityLockIcon(
-                        url = tab.url,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-
-                    // Compact Address Bar
-                    var text by remember(tab.url) { mutableStateOf(tab.url.replace("about:blank", "")) }
-                    TextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        keyboardOptions = KeyboardOptions(
-                            imeAction = androidx.compose.ui.text.input.ImeAction.Go
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onGo = {
-                                if (text.isNotEmpty()) {
-                                    if (viewModel.isUrlQuery(text)) {
-                                        val searchUrl = viewModel.getSearchUrl(text, searchEngine)
-                                        viewModel.navigateToUrlByTabId(tab.id, searchUrl)
-                                    } else {
-                                        viewModel.navigateToUrlByTabId(tab.id, text)
-                                    }
-                                }
-                            }
-                        )
-                    )
-
-                    // JS Indicator (Layer 10)
-                    val jsEnabled = siteSettings?.javascriptEnabled ?: true
-                    JavaScriptIndicator(
-                        isEnabled = jsEnabled,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-
-                    // Menu Button
-                    Box {
-                        IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Default.MoreVert, "Menu", modifier = Modifier.size(20.dp))
-                        }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("📸 Airlock Gallery") },
-                                onClick = {
-                                    viewModel.getWebView(tab.id)?.evaluateJavascript(MediaExtractor.EXTRACT_MEDIA_SCRIPT) { result ->
-                                        if (result != null && result != "null") {
-                                            try {
-                                                // Unescape returned JSON string
-                                                val json = if (result.startsWith("\"") && result.endsWith("\"")) {
-                                                    result.substring(1, result.length - 1)
-                                                        .replace("\\\"", "\"")
-                                                        .replace("\\\\", "\\")
-                                                } else result
-
-                                                val data = Gson().fromJson(json, MediaData::class.java)
-                                                viewModel.openAirlockGallery(data)
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
-                                            }
-                                        }
-                                    }
-                                    showMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
             }
-        }
+
         
         // Resize Handle (Bottom Right)
         Box(

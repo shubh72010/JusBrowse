@@ -25,12 +25,14 @@ import com.jusdots.jusbrowse.data.repository.PreferencesRepository
 import com.jusdots.jusbrowse.data.repository.SiteSettingsRepository
 import com.jusdots.jusbrowse.data.models.DownloadItem
 import com.jusdots.jusbrowse.data.models.Shortcut
+import com.jusdots.jusbrowse.data.models.Sticker
 import com.jusdots.jusbrowse.ui.screens.Screen
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -80,6 +82,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // Desktop Shortcuts
     val pinnedShortcuts: SnapshotStateList<Shortcut> = mutableStateListOf()
 
+    // Stickers
+    val stickers: SnapshotStateList<Sticker> = mutableStateListOf()
+
     // Preferences
     val searchEngine = preferencesRepository.searchEngine
     val homePage = preferencesRepository.homePage
@@ -96,7 +101,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val virusTotalApiKey = preferencesRepository.virusTotalApiKey
     val koodousApiKey = preferencesRepository.koodousApiKey
     val amoledBlackEnabled = preferencesRepository.amoledBlackEnabled
-    val bottomAddressBarEnabled = preferencesRepository.bottomAddressBarEnabled
     val startPageWallpaperUri = preferencesRepository.startPageWallpaperUri
     val startPageBlurAmount = preferencesRepository.startPageBlurAmount
     val backgroundPreset = preferencesRepository.backgroundPreset
@@ -111,6 +115,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // WallTheme Color Extraction
     private val _extractedWallColor = MutableStateFlow<androidx.compose.ui.graphics.Color?>(null)
     val extractedWallColor: StateFlow<androidx.compose.ui.graphics.Color?> = _extractedWallColor.asStateFlow()
+
+    private val _isStickerMode = MutableStateFlow(false)
+    val isStickerMode: StateFlow<Boolean> = _isStickerMode.asStateFlow()
+
+    val stickersEnabled = preferencesRepository.stickersEnabled
 
     // Multi-View Mode
     private val _isMultiViewMode = MutableStateFlow(false)
@@ -286,6 +295,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                  val loadedShortcuts: List<Shortcut> = gson.fromJson(savedShortcutsJson, shortcutsType)
                  pinnedShortcuts.clear()
                  pinnedShortcuts.addAll(loadedShortcuts)
+             } catch (e: Exception) {
+                 // Ignore
+             }
+        }
+
+        val savedStickersJson = preferencesRepository.stickers.first()
+        if (!savedStickersJson.isNullOrBlank()) {
+             try {
+                 val stickerType = object : TypeToken<List<Sticker>>() {}.type
+                 val loadedStickers: List<Sticker> = gson.fromJson(savedStickersJson, stickerType)
+                 stickers.clear()
+                 stickers.addAll(loadedStickers)
              } catch (e: Exception) {
                  // Ignore
              }
@@ -794,9 +815,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setBottomAddressBarEnabled(enabled: Boolean) {
+    fun setStickersEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            preferencesRepository.setBottomAddressBarEnabled(enabled)
+            preferencesRepository.setStickersEnabled(enabled)
         }
     }
 
@@ -877,6 +898,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         if (tabs.size >= 1) { 
             _isMultiViewMode.value = !_isMultiViewMode.value
         }
+    }
+
+    // Sticker Mode
+    fun toggleStickerMode() {
+        _isStickerMode.value = !_isStickerMode.value
     }
 
     fun getVisibleTabs(): List<BrowserTab> {
@@ -981,10 +1007,51 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun pinCurrentTabToDesktop() {
-        if (_activeTabIndex.value in tabs.indices) {
-            val currentTab = tabs[_activeTabIndex.value]
-            pinShortcut(currentTab.title.ifEmpty { currentTab.url }, currentTab.url)
+        val activeTab = tabs.getOrNull(activeTabIndex.value)
+        if (activeTab != null && activeTab.url != "about:blank") {
+            pinShortcut(activeTab.title, activeTab.url)
         }
     }
 
+    // Sticker Management
+    fun addSticker(imageUri: String, link: String? = null) {
+        val newSticker = Sticker(
+            id = UUID.randomUUID().toString(),
+            imageUri = imageUri,
+            link = link,
+            x = 0.5f,
+            y = 0.5f,
+            rotation = (-15..15).random().toFloat()
+        )
+        stickers.add(newSticker)
+        saveStickers()
+    }
+
+    fun updateStickerPosition(stickerId: String, x: Float, y: Float, persist: Boolean = true) {
+        val index = stickers.indexOfFirst { it.id == stickerId }
+        if (index != -1) {
+            stickers[index] = stickers[index].copy(x = x, y = y)
+            if (persist) saveStickers()
+        }
+    }
+
+    fun updateStickerLink(stickerId: String, link: String?) {
+        val index = stickers.indexOfFirst { it.id == stickerId }
+        if (index != -1) {
+            stickers[index] = stickers[index].copy(link = link)
+            saveStickers()
+        }
+    }
+
+    fun removeSticker(stickerId: String) {
+        stickers.removeIf { it.id == stickerId }
+        saveStickers()
+    }
+
+    fun saveStickers() {
+        viewModelScope.launch {
+            val json = gson.toJson(stickers.toList())
+            preferencesRepository.saveStickers(json)
+        }
+    }
 }

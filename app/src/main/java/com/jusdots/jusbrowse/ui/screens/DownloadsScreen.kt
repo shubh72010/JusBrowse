@@ -15,6 +15,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jusdots.jusbrowse.data.models.DownloadItem
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
@@ -32,21 +35,25 @@ fun DownloadsScreen(
     val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()) }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Downloads") },
+                title = { Text("Downloads", color = MaterialTheme.colorScheme.primary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
                 actions = {
                     if (downloads.isNotEmpty()) {
                         IconButton(onClick = { viewModel.clearDownloads() }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Clear All")
+                            Icon(Icons.Default.Delete, contentDescription = "Clear All", tint = MaterialTheme.colorScheme.primary)
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
             )
         }
     ) { paddingValues ->
@@ -77,6 +84,10 @@ fun DownloadsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
+                    .padding(16.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
             ) {
                 items(downloads) { item ->
                     DownloadListItem(
@@ -84,7 +95,7 @@ fun DownloadsScreen(
                         onDelete = { viewModel.deleteDownload(item) },
                         dateFormat = dateFormat
                     )
-                    Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                    Divider(modifier = Modifier.padding(horizontal = 16.dp), color = Color.White.copy(alpha = 0.1f))
                 }
             }
         }
@@ -111,7 +122,8 @@ fun DownloadListItem(
                     text = item.url,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelMedium
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -120,12 +132,12 @@ fun DownloadListItem(
                     Text(
                         text = formatFileSize(item.fileSize),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
                     )
                     Text(
                         text = dateFormat.format(Date(item.timestamp)),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
                     )
                 }
                 
@@ -147,14 +159,14 @@ fun DownloadListItem(
                         text = item.securityStatus,
                         style = MaterialTheme.typography.labelSmall,
                         color = statusColor,
-                        modifier = Modifier.background(statusColor.copy(alpha = 0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)
+                        modifier = Modifier.background(statusColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 2.dp)
                     )
                     
                     if (item.scanResult != null) {
                         Text(
                             text = item.scanResult,
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
@@ -168,7 +180,10 @@ fun DownloadListItem(
                 Icon(Icons.Default.Delete, contentDescription = "Delete")
             }
         },
-        modifier = Modifier.padding(horizontal = 8.dp)
+        modifier = Modifier.padding(horizontal = 8.dp),
+        colors = ListItemDefaults.colors(
+            containerColor = Color.Transparent
+        )
     )
 }
 

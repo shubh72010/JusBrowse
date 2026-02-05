@@ -12,6 +12,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
 
@@ -24,14 +29,18 @@ fun BookmarksScreen(
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle(initialValue = emptyList())
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Bookmarks") },
+                title = { Text("Bookmarks", color = MaterialTheme.colorScheme.primary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
             )
         }
     ) { paddingValues ->
@@ -53,6 +62,10 @@ fun BookmarksScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
+                    .padding(16.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
             ) {
                 items(bookmarks) { bookmark ->
                     ListItem(
@@ -67,7 +80,8 @@ fun BookmarksScreen(
                             Text(
                                 text = bookmark.url,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                         },
                         trailingContent = {
@@ -77,14 +91,14 @@ fun BookmarksScreen(
                         },
                         modifier = Modifier.padding(horizontal = 8.dp),
                         colors = ListItemDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.surface
+                            containerColor = Color.Transparent
                         ),
                         // Navigate to bookmark on click
                         leadingContent = { 
                             // Could add favicon here
                         }
                     )
-                    Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                    Divider(modifier = Modifier.padding(horizontal = 16.dp), color = Color.White.copy(alpha = 0.1f))
                 }
             }
         }

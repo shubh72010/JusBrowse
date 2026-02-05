@@ -39,7 +39,6 @@ class PreferencesRepository(private val context: Context) {
         val COMPACT_MODE = booleanPreferencesKey("compact_mode")
         val ADDRESS_BAR_STYLE = stringPreferencesKey("address_bar_style")
         val AMOLED_BLACK_ENABLED = booleanPreferencesKey("amoled_black_enabled")
-        val BOTTOM_ADDRESS_BAR_ENABLED = booleanPreferencesKey("bottom_address_bar_enabled")
         val START_PAGE_WALLPAPER_URI = stringPreferencesKey("start_page_wallpaper_uri")
         val START_PAGE_BLUR_AMOUNT = stringPreferencesKey("start_page_blur_amount")
         
@@ -50,6 +49,8 @@ class PreferencesRepository(private val context: Context) {
         val MULTI_MEDIA_PLAYBACK_ENABLED = booleanPreferencesKey("multi_media_playback_enabled")
         val APP_FONT = stringPreferencesKey("app_font")
         val BACKGROUND_PRESET = stringPreferencesKey("background_preset")
+        val SAVED_STICKERS = stringPreferencesKey("saved_stickers")
+        val STICKERS_ENABLED = booleanPreferencesKey("stickers_enabled")
     }
 
     val searchEngine: Flow<String> = context.dataStore.data.map { preferences ->
@@ -270,9 +271,6 @@ class PreferencesRepository(private val context: Context) {
         preferences[PreferenceKeys.AMOLED_BLACK_ENABLED] ?: false
     }
 
-    val bottomAddressBarEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[PreferenceKeys.BOTTOM_ADDRESS_BAR_ENABLED] ?: false
-    }
 
     suspend fun setAmoledBlackEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
@@ -280,11 +278,6 @@ class PreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun setBottomAddressBarEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[PreferenceKeys.BOTTOM_ADDRESS_BAR_ENABLED] = enabled
-        }
-    }
 
     val startPageWallpaperUri: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[PreferenceKeys.START_PAGE_WALLPAPER_URI]
@@ -368,6 +361,26 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setBackgroundPreset(preset: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferenceKeys.BACKGROUND_PRESET] = preset
+        }
+    }
+
+    val stickers: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.SAVED_STICKERS]
+    }
+
+    suspend fun saveStickers(stickersJson: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.SAVED_STICKERS] = stickersJson
+        }
+    }
+
+    val stickersEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.STICKERS_ENABLED] ?: true
+    }
+
+    suspend fun setStickersEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.STICKERS_ENABLED] = enabled
         }
     }
 }

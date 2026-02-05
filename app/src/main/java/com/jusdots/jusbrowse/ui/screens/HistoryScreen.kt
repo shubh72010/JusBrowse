@@ -12,6 +12,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
 import java.text.SimpleDateFormat
@@ -28,21 +33,25 @@ fun HistoryScreen(
     val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()) }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("History") },
+                title = { Text("History", color = MaterialTheme.colorScheme.primary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
                 actions = {
                     if (history.isNotEmpty()) {
                         IconButton(onClick = { viewModel.clearHistory() }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Clear All")
+                            Icon(Icons.Default.Delete, contentDescription = "Clear All", tint = MaterialTheme.colorScheme.primary)
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
             )
         }
     ) { paddingValues ->
@@ -64,6 +73,10 @@ fun HistoryScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
+                    .padding(16.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
             ) {
                 items(history) { item ->
                     ListItem(
@@ -79,12 +92,13 @@ fun HistoryScreen(
                                 Text(
                                     text = item.url,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
                                 Text(
                                     text = dateFormat.format(Date(item.visitedAt)),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.secondary
+                                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
                                 )
                             }
                         },
@@ -93,9 +107,12 @@ fun HistoryScreen(
                                 Icon(Icons.Default.Delete, contentDescription = "Delete")
                             }
                         },
-                        modifier = Modifier.padding(horizontal = 8.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        colors = ListItemDefaults.colors(
+                            containerColor = Color.Transparent
+                        )
                     )
-                    Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                    Divider(modifier = Modifier.padding(horizontal = 16.dp), color = Color.White.copy(alpha = 0.1f))
                 }
             }
         }

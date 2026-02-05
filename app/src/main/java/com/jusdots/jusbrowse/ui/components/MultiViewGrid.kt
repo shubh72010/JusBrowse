@@ -1,5 +1,6 @@
 package com.jusdots.jusbrowse.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -7,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.google.gson.Gson
 import com.jusdots.jusbrowse.data.models.BrowserTab
@@ -88,14 +90,15 @@ private fun GridCell(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Black.copy(alpha = 0.1f))
             .border(
-                width = if (isActive) 3.dp else 1.dp,
+                width = if (isActive) 2.dp else 1.dp,
                 color = if (isActive) 
-                    MaterialTheme.colorScheme.primary 
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.8f) 
                 else 
-                    MaterialTheme.colorScheme.outline,
-                shape = RoundedCornerShape(8.dp)
+                    Color.White.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(12.dp)
             )
     ) {
         // Render the WebView for each tab

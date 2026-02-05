@@ -5,8 +5,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -41,6 +44,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -112,6 +117,7 @@ fun AddressBarWithWebView(
     
     // Elastic Swipe State (Animatable for smooth physics)
     val pillOffset = remember { androidx.compose.animation.core.Animatable(0f) }
+    val pillVerticalOffset = remember { androidx.compose.animation.core.Animatable(0f) }
     val scope = rememberCoroutineScope()
     
     // Focus Requester for Search Bar
@@ -130,6 +136,15 @@ fun AddressBarWithWebView(
         }
     }
 
+    // Elastic Width Animation for Pill Bar
+    val animatedPillWidth by animateFloatAsState(
+        targetValue = if (isPillExpanded) 1.0f else 0.9f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "pillWidth"
+    )
 
     // Scroll Hide State
     val bottomBarHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { 100.dp.toPx() }
@@ -319,63 +334,59 @@ fun AddressBarWithWebView(
                  )
              }
             } else {
-                // New Tab Page Logic
-                val wallpaperUri by viewModel.startPageWallpaperUri.collectAsStateWithLifecycle(initialValue = null)
-                val blurAmount by viewModel.startPageBlurAmount.collectAsStateWithLifecycle(initialValue = 0f)
-                val backgroundPresetName by viewModel.backgroundPreset.collectAsStateWithLifecycle(initialValue = "NONE")
-                
-                val backgroundPreset = try {
-                    com.jusdots.jusbrowse.ui.theme.BackgroundPreset.valueOf(backgroundPresetName)
-                } catch (e: Exception) {
-                    com.jusdots.jusbrowse.ui.theme.BackgroundPreset.NONE
-                }
-
-                Box(
+                // Start Page Content (Background is now global)
+                Column(
                     modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)
                 ) {
-                    // Animated Background Preset (if no custom wallpaper)
-                    if (wallpaperUri == null && backgroundPreset != com.jusdots.jusbrowse.ui.theme.BackgroundPreset.NONE) {
-                        BackgroundRenderer(
-                            preset = backgroundPreset,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)))
-                    }
-                    
-                    // Custom Wallpaper (takes priority over preset)
-                    if (wallpaperUri != null) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(wallpaperUri)
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().blur(blurAmount.dp)
-                        )
-                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
-                    }
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Text(
-                            text = "JusBrowse",
-                            style = MaterialTheme.typography.displayLarge,
-                            color = if (wallpaperUri != null || backgroundPreset != com.jusdots.jusbrowse.ui.theme.BackgroundPreset.NONE) 
-                                Color.White else MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Start browsing",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (wallpaperUri != null || backgroundPreset != com.jusdots.jusbrowse.ui.theme.BackgroundPreset.NONE) 
-                                Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "JusBrowse",
+                        style = MaterialTheme.typography.displayLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Start Browsing",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
+        }
+        
+        // Reveal Trigger (Invisible zone at bottom to swipe up and re-show the bar)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(40.dp)
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        if (dragAmount.y < -10f && bottomBarOffsetHeightPx.value > 0f) {
+                            change.consume()
+                            scope.launch {
+                                bottomBarOffsetHeightPx.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+                                )
+                            }
+                        }
+                    }
+                }
+        )
+        
+        // Dismiss Scrim (Only active when pill is expanded)
+        if (isPillExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            isPillExpanded = false
+                            focusManager.clearFocus()
+                        }
+                    }
+            )
         }
         
         // 2. Floating Pill Bar (Bottom)
@@ -383,62 +394,96 @@ fun AddressBarWithWebView(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .imePadding()
                 .padding(bottom = 16.dp)
                 .offset { 
                     androidx.compose.ui.unit.IntOffset(
                         pillOffset.value.roundToInt(), 
-                        bottomBarOffsetHeightPx.value.roundToInt()
+                        (bottomBarOffsetHeightPx.value + pillVerticalOffset.value).roundToInt()
                     ) 
                 }
-                .fillMaxWidth(0.9f)
+                .fillMaxWidth(animatedPillWidth)
                 .height(56.dp)
-                .shadow(8.dp, CircleShape)
-                .background(MaterialTheme.colorScheme.surface, CircleShape)
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.2f),
+                    shape = CircleShape
+                )
                 .clip(CircleShape)
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            val threshold = 200f // Swipe threshold
-                            val offset = pillOffset.value
-                            scope.launch {
-                                if (offset > threshold) {
-                                    // Swipe Right -> Back
-                                    viewModel.getWebView(tab?.id ?: "")?.let { if (it.canGoBack()) it.goBack() }
-                                } else if (offset < -threshold) {
-                                    // Swipe Left -> Forward
-                                    viewModel.getWebView(tab?.id ?: "")?.let { if (it.canGoForward()) it.goForward() }
+                .pointerInput(isPillExpanded) {
+                    if (!isPillExpanded) {
+                        detectDragGestures(
+                            onDragEnd = {
+                                val hOffset = pillOffset.value
+                                val vOffset = pillVerticalOffset.value
+                                val threshold = 150f
+                                scope.launch {
+                                    if (hOffset > threshold) {
+                                        viewModel.getWebView(tab?.id ?: "")?.let { if (it.canGoBack()) it.goBack() }
+                                    } else if (hOffset < -threshold) {
+                                        viewModel.getWebView(tab?.id ?: "")?.let { if (it.canGoForward()) it.goForward() }
+                                    }
+                                    
+                                    // Swipe Up threshold for menu
+                                    if (vOffset < -100f) {
+                                        showPillMenu = true
+                                    }
+
+                                    // Snap back horizontally
+                                    pillOffset.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                                    // Snap back vertically
+                                    pillVerticalOffset.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
                                 }
-                                // Elastic Snap Back
-                                pillOffset.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = androidx.compose.animation.core.spring(
-                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow
-                                    )
-                                )
+                            },
+                            onDragCancel = {
+                                scope.launch {
+                                    pillOffset.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                                    pillVerticalOffset.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                                }
+                            },
+                            onDrag = { change: PointerInputChange, dragAmount: Offset ->
+                                change.consume()
+                                scope.launch {
+                                    // Horizontal elastic drag
+                                    pillOffset.snapTo(pillOffset.value + (dragAmount.x * 0.6f))
+                                    
+                                    // Vertical elastic drag (upwards resistance)
+                                    if (dragAmount.y < 0) {
+                                        pillVerticalOffset.snapTo(pillVerticalOffset.value + (dragAmount.y * 0.4f))
+                                    } else {
+                                        // Swipe Down to hide (existing logic)
+                                        if (dragAmount.y > 10f) {
+                                            bottomBarOffsetHeightPx.animateTo(
+                                                targetValue = bottomBarHeightPx,
+                                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        },
-                        onDragCancel = {
-                            scope.launch {
-                                pillOffset.animateTo(0f)
-                            }
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            scope.launch {
-                                // Apply resistance (dampening) as we drag further
-                                val resistance = 0.6f
-                                pillOffset.snapTo(pillOffset.value + (dragAmount * resistance))
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
-                .combinedClickable(
-                    onClick = { isPillExpanded = true },
-                    onLongClick = { showPillMenu = true }
+                .then(
+                    if (!isPillExpanded) {
+                        Modifier.combinedClickable(
+                            onClick = { isPillExpanded = true },
+                            onLongClick = { 
+                                viewModel.getWebView(tab?.id ?: "")?.reload()
+                            }
+                        )
+                    } else Modifier
                 )
         ) {
+            // Blurred Background Layer (60% Blur effect using ~16dp radius)
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .blur(16.dp)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+            )
+
+            // Content Container
+            Box(modifier = Modifier.fillMaxSize()) {
             if (isPillExpanded) {
                 // Expanded Edit Mode
                 Row(
@@ -455,9 +500,6 @@ fun AddressBarWithWebView(
                                 if (focusState.isFocused) {
                                     hasGainedFocus = true
                                 }
-                                if (!focusState.isFocused && isPillExpanded && hasGainedFocus) {
-                                    isPillExpanded = false
-                                }
                             },
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
@@ -466,12 +508,15 @@ fun AddressBarWithWebView(
                             onSearch = {
                                 val query = urlText.trim()
                                 if (query.isNotEmpty() && tab != null) {
-                                    if (viewModel.isUrlQuery(query)) {
-                                        val searchUrl = viewModel.getSearchUrl(query, searchEngine)
-                                        viewModel.navigateToUrlForIndex(tabIndex, searchUrl)
+                                    val targetUrl = if (viewModel.isUrlQuery(query)) {
+                                        viewModel.getSearchUrl(query, searchEngine)
                                     } else {
-                                        viewModel.navigateToUrlForIndex(tabIndex, query)
+                                        query
                                     }
+                                    
+                                    viewModel.getWebView(tab.id)?.loadUrl(targetUrl)
+                                    viewModel.navigateToUrlForIndex(tabIndex, targetUrl)
+                                    
                                     isPillExpanded = false
                                     focusManager.clearFocus()
                                 }
@@ -479,12 +524,15 @@ fun AddressBarWithWebView(
                             onGo = { // Fallback support
                                 val query = urlText.trim()
                                 if (query.isNotEmpty() && tab != null) {
-                                    if (viewModel.isUrlQuery(query)) {
-                                        val searchUrl = viewModel.getSearchUrl(query, searchEngine)
-                                        viewModel.navigateToUrlForIndex(tabIndex, searchUrl)
+                                    val targetUrl = if (viewModel.isUrlQuery(query)) {
+                                        viewModel.getSearchUrl(query, searchEngine)
                                     } else {
-                                        viewModel.navigateToUrlForIndex(tabIndex, query)
+                                        query
                                     }
+                                    
+                                    viewModel.getWebView(tab.id)?.loadUrl(targetUrl)
+                                    viewModel.navigateToUrlForIndex(tabIndex, targetUrl)
+                                    
                                     isPillExpanded = false
                                     focusManager.clearFocus()
                                 }
@@ -533,9 +581,10 @@ fun AddressBarWithWebView(
                     }
                 }
             }
-            
-            // Custom Menu is now outside this box to center on screen
         }
+        
+        // Custom Menu is now outside this box to center on screen
+    }
         
         // Drop Zone Overlay
         if (isDragging) {
@@ -636,139 +685,238 @@ fun AddressBarWithWebView(
             )
         }
 
-        // 3. Elastic Centered Menu Overlay
+        // 3. Elastic Centered Menu Overlay (Glassmorphism Redesign)
         AnimatedVisibility(
             visible = showPillMenu,
-            enter = scaleIn(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
-            exit = scaleOut() + fadeOut(),
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+            ) + scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + scaleOut(targetScale = 0.8f) + fadeOut(),
             modifier = Modifier.fillMaxSize()
         ) {
              Box(
                  modifier = Modifier
                      .fillMaxSize()
-                     .background(Color.Black.copy(alpha = 0.5f))
+                     .background(Color.Black.copy(alpha = 0.4f))
                      .pointerInput(Unit) { 
-                         // Tap outside to dismiss
                          detectTapGestures(onTap = { showPillMenu = false }) 
                      },
                  contentAlignment = Alignment.Center
              ) {
-                 Card(
-                     modifier = Modifier
-                         .width(280.dp)
-                         .padding(16.dp)
-                         .pointerInput(Unit) { /* Trap clicks */ },
-                     shape = RoundedCornerShape(24.dp),
-                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                     elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
-                 ) {
-                     Column(
-                         modifier = Modifier.padding(8.dp).verticalScroll(rememberScrollState())
-                     ) {
-                         // -- Menu Items --
-                        DropdownMenuItem(
-                            text = { Text("New Tab (Home)") },
-                            onClick = { viewModel.createNewTab(); showPillMenu = false },
-                            leadingIcon = { Icon(Icons.Default.Home, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Multi-View Window") },
-                            onClick = { viewModel.toggleMultiViewMode(); showPillMenu = false },
-                            leadingIcon = { Icon(Icons.Default.GridView, null) }
-                        )
-                        Divider(modifier = Modifier.padding(vertical = 4.dp))
-                        
-                        DropdownMenuItem(
-                            text = { Text("Refresh") },
-                            onClick = { viewModel.getWebView(tab?.id ?: "")?.reload(); showPillMenu = false },
-                            leadingIcon = { Icon(Icons.Default.Refresh, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Copy URL") },
-                            onClick = {
-                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                val clip = android.content.ClipData.newPlainText("URL", tab?.url ?: "")
-                                clipboard.setPrimaryClip(clip)
-                                showPillMenu = false
-                            },
-                            leadingIcon = { Icon(Icons.Default.ContentCopy, null) }
-                        )
-                        
-                        Divider(modifier = Modifier.padding(vertical = 4.dp))
+                // Background Blur Effect
+                Box(modifier = Modifier.fillMaxSize().blur(20.dp).background(Color.Black.copy(alpha = 0.1f)))
 
-                        DropdownMenuItem(
-                            text = { Text("Bookmarks") },
-                            onClick = { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.BOOKMARKS); showPillMenu = false },
-                            leadingIcon = { Icon(Icons.Default.Star, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("History") },
-                            onClick = { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.HISTORY); showPillMenu = false },
-                            leadingIcon = { Icon(Icons.Default.DateRange, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Downloads") },
-                            onClick = { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.DOWNLOADS); showPillMenu = false },
-                            leadingIcon = { Icon(Icons.Default.Download, null) }
-                        )
-                        
-                        Divider(modifier = Modifier.padding(vertical = 4.dp))
-
-                        DropdownMenuItem(
-                            text = { Text("New Private Tab") },
-                            onClick = { viewModel.createNewTab(isPrivate = true); showPillMenu = false },
-                            leadingIcon = { Icon(Icons.Default.VpnKey, null) }
-                        )
-                        
-                        // Container Expander
+                Card(
+                    modifier = Modifier
+                        .width(320.dp)
+                        .padding(16.dp)
+                        .pointerInput(Unit) { /* Trap clicks */ },
+                    shape = RoundedCornerShape(32.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .padding(20.dp)
+                            .verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         var showContainers by remember { mutableStateOf(false) }
-                        DropdownMenuItem(
-                            text = { Text("New Container Tab") },
-                            onClick = { showContainers = !showContainers },
-                            leadingIcon = { Icon(Icons.Default.Layers, null) },
-                            trailingIcon = { Icon(if (showContainers) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null) }
+
+                        Text(
+                            text = if (showContainers) "Select Container" else "JusBrowse Menu",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 16.dp)
                         )
-                        
-                       if (showContainers) {
-                            com.jusdots.jusbrowse.security.ContainerManager.AVAILABLE_CONTAINERS.filter { it != "default" }.forEach { container ->
-                                DropdownMenuItem(
-                                    text = { Text(com.jusdots.jusbrowse.security.ContainerManager.getContainerName(container)) },
-                                    onClick = {
-                                        viewModel.createNewTab(containerId = container)
+
+                        AnimatedContent(
+                            targetState = showContainers,
+                            transitionSpec = {
+                                (fadeIn(animationSpec = spring(stiffness = Spring.StiffnessLow)) + 
+                                 scaleIn(initialScale = 0.92f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)))
+                                .togetherWith(fadeOut() + scaleOut(targetScale = 0.92f))
+                            },
+                            label = "menuContent"
+                        ) { isShowingContainers ->
+                            if (isShowingContainers) {
+                                // Container Selection Grid
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    androidx.compose.foundation.layout.FlowRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                                        maxItemsInEachRow = 3
+                                    ) {
+                                        com.jusdots.jusbrowse.security.ContainerManager.AVAILABLE_CONTAINERS.forEachIndexed { index, containerId ->
+                                            val name = com.jusdots.jusbrowse.security.ContainerManager.getContainerName(containerId)
+                                            val color = when(containerId) {
+                                                "personal" -> Color(0xFF4CAF50)
+                                                "work" -> Color(0xFF2196F3)
+                                                "banking" -> Color(0xFFFFC107)
+                                                "shopping" -> Color(0xFFE91E63)
+                                                else -> MaterialTheme.colorScheme.primary
+                                            }
+
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                modifier = Modifier
+                                                    .width(80.dp)
+                                                    .clip(RoundedCornerShape(16.dp))
+                                                    .combinedClickable(onClick = { 
+                                                        viewModel.createNewTab(containerId = containerId)
+                                                        showPillMenu = false 
+                                                    })
+                                                    .padding(8.dp)
+                                            ) {
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = color.copy(alpha = 0.2f),
+                                                    modifier = Modifier.size(48.dp),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.4f))
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            Icons.Default.Layers,
+                                                            null,
+                                                            tint = color,
+                                                            modifier = Modifier.size(24.dp)
+                                                        )
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = name,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    textAlign = TextAlign.Center,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    TextButton(onClick = { showContainers = false }) {
+                                        Icon(Icons.Default.ArrowBack, null)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Back to Menu")
+                                    }
+                                }
+                            } else {
+                                // Grid of Quick Actions
+                                val menuItems = listOf(
+                                    Triple(Icons.Default.Home, "Home") { viewModel.createNewTab(); showPillMenu = false },
+                                    Triple(Icons.Default.GridView, "Multi-View") { viewModel.toggleMultiViewMode(); showPillMenu = false },
+                                    Triple(Icons.Default.Refresh, "Refresh") { viewModel.getWebView(tab?.id ?: "")?.reload(); showPillMenu = false },
+                                    Triple(Icons.Default.ContentCopy, "Copy URL") {
+                                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        val clip = android.content.ClipData.newPlainText("URL", tab?.url ?: "")
+                                        clipboard.setPrimaryClip(clip)
                                         showPillMenu = false
                                     },
-                                    modifier = Modifier.padding(start = 16.dp),
-                                    leadingIcon = { Icon(androidx.compose.ui.res.painterResource(id = android.R.drawable.ic_menu_agenda), null, modifier = Modifier.size(16.dp)) } 
+                                    Triple(Icons.Default.Star, "Bookmarks") { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.BOOKMARKS); showPillMenu = false },
+                                    Triple(Icons.Default.History, "History") { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.HISTORY); showPillMenu = false },
+                                    Triple(Icons.Default.Download, "Downloads") { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.DOWNLOADS); showPillMenu = false },
+                                    Triple(Icons.Default.VpnKey, "Private") { viewModel.createNewTab(isPrivate = true); showPillMenu = false },
+                                    Triple(Icons.Default.Layers, "Container") { showContainers = true },
+                                    Triple(Icons.Default.Settings, "Settings") { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.SETTINGS); showPillMenu = false }
                                 )
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    androidx.compose.foundation.layout.FlowRow(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                                        maxItemsInEachRow = 3
+                                    ) {
+                                        menuItems.forEachIndexed { index, item ->
+                                            var visible by remember { mutableStateOf(false) }
+                                            LaunchedEffect(Unit) {
+                                                kotlinx.coroutines.delay(50L * index)
+                                                visible = true
+                                            }
+                                            
+                                            AnimatedVisibility(
+                                                visible = visible,
+                                                enter = scaleIn(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                                                exit = scaleOut() + fadeOut()
+                                            ) {
+                                                Column(
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    modifier = Modifier
+                                                        .width(80.dp)
+                                                        .clip(RoundedCornerShape(16.dp))
+                                                        .combinedClickable(onClick = { item.third() })
+                                                        .padding(8.dp)
+                                                ) {
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                                        modifier = Modifier.size(48.dp)
+                                                    ) {
+                                                        Box(contentAlignment = Alignment.Center) {
+                                                            Icon(
+                                                                item.first,
+                                                                null,
+                                                                tint = MaterialTheme.colorScheme.primary,
+                                                                modifier = Modifier.size(24.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = item.second,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        textAlign = TextAlign.Center,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
 
-                        Divider(modifier = Modifier.padding(vertical = 4.dp))
-
-                        DropdownMenuItem(
-                            text = { Text("Settings") },
-                            onClick = { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.SETTINGS); showPillMenu = false },
-                            leadingIcon = { Icon(Icons.Default.Settings, null) }
-                        )
-                        
-                        // Tracker info needs to use the captured trackers list.
-                        // I need to make sure 'trackers' is available here.
-                        // 'trackers' variable is defined at the top level of the composable.
-                        // So it should be captured.
                         if (trackers.isNotEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("Trackers: ${trackers.size}") },
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Surface(
                                 onClick = { showTrackerDetails = true; showPillMenu = false },
-                                leadingIcon = { Icon(Icons.Default.Shield, null) }
-                            )
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.error)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text("Blocked ${trackers.size} Trackers", style = MaterialTheme.typography.bodyMedium)
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    Icon(Icons.Default.ChevronRight, null)
+                                }
+                            }
                         }
-                        DropdownMenuItem(
-                            text = { Text("Airlock Gallery") },
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        TextButton(
                             onClick = { onOpenAirlockGallery(); showPillMenu = false },
-                            leadingIcon = { Icon(Icons.Default.PhotoLibrary, null) }
-                        )
-                     }
-                 }
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Icon(Icons.Default.PhotoLibrary, null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Airlock Gallery")
+                        }
+                    }
+                }
              }
         }
     }

@@ -2,6 +2,7 @@ package com.jusdots.jusbrowse.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,11 +17,15 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Masks
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +43,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material.icons.filled.Image
+import com.jusdots.jusbrowse.data.models.Sticker
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import com.jusdots.jusbrowse.ui.theme.BrowserTheme
 import com.jusdots.jusbrowse.ui.theme.AppFont
@@ -65,7 +73,7 @@ fun SettingsScreen(
     val follianMode by viewModel.follianMode.collectAsStateWithLifecycle(initialValue = false)
     val amoledBlackEnabled by viewModel.amoledBlackEnabled.collectAsStateWithLifecycle(initialValue = false)
     val appFont by viewModel.appFont.collectAsStateWithLifecycle(initialValue = "SYSTEM")
-    val bottomAddressBarEnabled by viewModel.bottomAddressBarEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val stickers = viewModel.stickers
     val wallColorExtracted by viewModel.extractedWallColor.collectAsStateWithLifecycle()
 
     // Engines
@@ -78,6 +86,9 @@ fun SettingsScreen(
     val fakeModeEnabled by FakeModeManager.isEnabled.collectAsStateWithLifecycle()
     val currentPersona by FakeModeManager.currentPersona.collectAsStateWithLifecycle()
     var showFakeModeDialog by remember { mutableStateOf(false) }
+
+    var editingSticker by remember { mutableStateOf<Sticker?>(null) }
+    var stickerLinkText by remember { mutableStateOf("") }
     
     // Context for FakeModeManager (App Restart)
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -94,25 +105,36 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text("Settings", color = MaterialTheme.colorScheme.primary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            val screenWidth = maxWidth
+            val screenHeight = maxHeight
+            
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             // Search Engine
             Text(
                 text = "General",
@@ -149,13 +171,6 @@ fun SettingsScreen(
                     }
                 }
             }
-
-            SettingsSwitch(
-                title = "Bottom Address Bar",
-                subtitle = "Move the address bar and controls to the bottom",
-                checked = bottomAddressBarEnabled,
-                onCheckedChange = { viewModel.setBottomAddressBarEnabled(it) }
-            )
 
             // Custom Start Page
             val homePage by viewModel.homePage.collectAsStateWithLifecycle(initialValue = "about:blank")
@@ -209,6 +224,22 @@ fun SettingsScreen(
                         e.printStackTrace()
                     }
                     viewModel.setStartPageWallpaperUri(it.toString())
+                }
+            }
+
+            val stickerLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                uri?.let {
+                    try {
+                        context.contentResolver.takePersistableUriPermission(
+                            it,
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                    viewModel.addSticker(it.toString())
                 }
             }
 
@@ -282,11 +313,11 @@ fun SettingsScreen(
 
                 } else {
                     OutlinedButton(
-                        onClick = { launcher.launch(arrayOf("image/*")) },
+                        onClick = { launcher.launch(arrayOf("image/*", "video/*")) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Image, null, modifier = Modifier.padding(end = 8.dp))
-                        Text("Select Wallpaper Image")
+                        Text("Select Wallpaper (Image/Video)")
                     }
                 }
             }
@@ -321,7 +352,160 @@ fun SettingsScreen(
                 }
             }
 
-            HorizontalDivider()
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // Stickers Section
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Stickers",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                Text(
+                    text = "Decorate your start page with custom images. Drag to position, tap to peel.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (stickers.size == 0) {
+                    Text(
+                        text = "No stickers added yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                } else {
+                    androidx.compose.foundation.lazy.LazyRow(
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(
+                            count = stickers.size,
+                            key = { index -> stickers[index].id }
+                        ) { index ->
+                            val sticker = stickers[index]
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(80.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                        .pointerInput(sticker.id) {
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = { },
+                                                onDragEnd = { viewModel.saveStickers() },
+                                                onDragCancel = { viewModel.saveStickers() },
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    val d = this@pointerInput.density
+                                                    // Convert drag relative to screen dims
+                                                    val deltaX = dragAmount.x / (screenWidth.value * d)
+                                                    val deltaY = dragAmount.y / (screenHeight.value * d)
+                                                    
+                                                    viewModel.updateStickerPosition(
+                                                        sticker.id,
+                                                        (sticker.x + deltaX).coerceIn(0f, 1f),
+                                                        (sticker.y + deltaY).coerceIn(0f, 1f),
+                                                        persist = false
+                                                    )
+                                                }
+                                            )
+                                        }
+                                        .clickable { 
+                                            editingSticker = sticker
+                                            stickerLinkText = sticker.link ?: ""
+                                        }
+                                ) {
+                                    AsyncImage(
+                                        model = sticker.imageUri,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    IconButton(
+                                        onClick = { viewModel.removeSticker(sticker.id) },
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .align(Alignment.TopEnd)
+                                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.8f), CircleShape)
+                                    ) {
+                                        Icon(
+                                            imageVector = androidx.compose.material.icons.Icons.Default.Close,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = if (sticker.link != null) "🔗 Link" else "No Link",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (sticker.link != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = { stickerLauncher.launch(arrayOf("image/*")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text("Add Sticker")
+                }
+            }
+
+            if (editingSticker != null) {
+                AlertDialog(
+                    onDismissRequest = { editingSticker = null },
+                    title = { Text("Edit Sticker Link") },
+                    text = {
+                        Column {
+                            Text("Enter a URL to open when this sticker is tapped on the start page.")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = stickerLinkText,
+                                onValueChange = { stickerLinkText = it },
+                                placeholder = { Text("https://example.com") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val st = editingSticker
+                            if (st != null) {
+                                viewModel.updateStickerLink(
+                                    st.id,
+                                    if (stickerLinkText.isBlank()) null else stickerLinkText
+                                )
+                                editingSticker = null
+                            }
+                        }) {
+                            Text("Save")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { editingSticker = null }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // Privacy & Security
             Text(
@@ -646,6 +830,7 @@ fun SettingsScreen(
             )
         }
     }
+}
 }
 
 @Composable
