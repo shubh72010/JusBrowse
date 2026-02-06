@@ -1,6 +1,7 @@
 package com.jusdots.jusbrowse.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,7 +25,9 @@ import coil.request.ImageRequest
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import com.jusdots.jusbrowse.ui.components.BackgroundRenderer
-import com.jusdots.jusbrowse.ui.components.StickerPeel
+import com.jusdots.jusbrowse.ui.components.TransformableSticker
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.viewinterop.AndroidView
 import android.widget.VideoView
@@ -110,6 +113,7 @@ fun BrowserScreen(
         }
 
         val stickers = viewModel.stickers
+        val selectedStickerId by viewModel.selectedStickerId.collectAsStateWithLifecycle()
 
         // Global Background Layer
         Box(modifier = Modifier.fillMaxSize()) {
@@ -154,6 +158,10 @@ fun BrowserScreen(
                         update = { view ->
                              // Ensure it's still playing/correct URI if it changes
                              // view.setVideoURI(uri) // Careful with restarts
+                        },
+                        onRelease = { view ->
+                            view.stopPlayback()
+                            view.setVideoURI(null)
                         }
                     )
                 } else {
@@ -186,8 +194,9 @@ fun BrowserScreen(
             },
             bottomBar = {
                 Column {
-                    if (!isMultiView) {
-                        // Bottom Address Bar is now handled inside AddressBarWithWebView for Single View
+                    val isKeyboardVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+                    
+                    if (!isMultiView && !isKeyboardVisible) {
                         BottomTabBar(
                             tabs = tabs,
                             activeTabIndex = activeTabIndex,
@@ -220,59 +229,52 @@ fun BrowserScreen(
                                 onOpenAirlockGallery = { openAirlockGallery() },
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(paddingValues)
+                                    .padding(paddingValues),
+                                stickerContent = {
+                                    val stickersEnabled by viewModel.stickersEnabled.collectAsStateWithLifecycle(initialValue = true)
+                                    val activeTab = tabs.getOrNull(activeTabIndex)
+                                    val isStartPage = activeTab?.url == "about:blank" || activeTab?.url?.isEmpty() == true
+                                    
+                                    if (stickersEnabled && currentScreen == Screen.BROWSER && !isMultiView && isStartPage) {
+                                        BoxWithConstraints(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .pointerInput(Unit) {
+                                                    detectTapGestures {
+                                                        viewModel.setSelectedStickerId(null)
+                                                    }
+                                                }
+                                        ) {
+                                            val sWidth = maxWidth.value
+                                            val sHeight = maxHeight.value
+                                            
+                                            stickers.forEach { sticker ->
+                                                TransformableSticker(
+                                                    sticker = sticker,
+                                                    isSelected = selectedStickerId == sticker.id,
+                                                    screenWidth = sWidth,
+                                                    screenHeight = sHeight,
+                                                    onTransform = { x, y, w, h, r ->
+                                                        viewModel.updateStickerTransform(sticker.id, x, y, w, h, r)
+                                                    },
+                                                    onClick = {
+                                                        viewModel.setSelectedStickerId(sticker.id)
+                                                        sticker.link?.let { link ->
+                                                            viewModel.navigateToUrlByTabId(activeTab?.id ?: "", link)
+                                                        }
+                                                    },
+                                                    onDelete = {
+                                                        viewModel.removeSticker(sticker.id)
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             )
                         }
                     }
 
-                    // Sticker Layer - High-res and interactive
-                    val stickersEnabled by viewModel.stickersEnabled.collectAsStateWithLifecycle(initialValue = true)
-                    val isStickerMode by viewModel.isStickerMode.collectAsStateWithLifecycle(initialValue = false)
-                    val activeTab = tabs.getOrNull(activeTabIndex)
-                    val isStartPage = activeTab?.url == "about:blank" || activeTab?.url?.isEmpty() == true
-                    
-                    // Strict Gate: Only show on Browser Screen, NOT in Multi-view, and only on Start Page
-                    if (stickersEnabled && currentScreen == Screen.BROWSER && !isMultiView && isStartPage) {
-                        Box(
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                                val screenWidth = maxWidth
-                                val screenHeight = maxHeight
-                                val density = androidx.compose.ui.platform.LocalDensity.current
-                                val halfSize = with(density) { 256.toDp() }
-                                
-                                stickers.forEach { sticker: com.jusdots.jusbrowse.data.models.Sticker ->
-                                    // Clamp position to ensure visibility (no off-screen ghosts)
-                                    val safeX = sticker.x.takeIf { it in 0.05f..0.95f } ?: 0.5f
-                                    val safeY = sticker.y.takeIf { it in 0.05f..0.95f } ?: 0.5f
-
-                                    StickerPeel(
-                                        sticker = sticker,
-                                        onPositionChange = { delta ->
-                                            val newX = (safeX * screenWidth.value + delta.x / density.density) / screenWidth.value
-                                            val newY = (safeY * screenHeight.value + delta.y / density.density) / screenHeight.value
-                                            viewModel.updateStickerPosition(sticker.id, newX.coerceIn(0f, 1f), newY.coerceIn(0f, 1f), persist = false)
-                                        },
-                                        onDragEnd = { viewModel.saveStickers() },
-                                        onClick = {
-                                            sticker.link?.let { link ->
-                                                val activeTab = tabs.getOrNull(activeTabIndex)
-                                                activeTab?.let { tab ->
-                                                    viewModel.navigateToUrlByTabId(tab.id, link)
-                                                }
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .offset(
-                                                x = (screenWidth * safeX) - halfSize,
-                                                y = (screenHeight * safeY) - halfSize
-                                            )
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
             Screen.BOOKMARKS -> {

@@ -24,8 +24,8 @@ object DnsResolver {
             val url = URL("https://dns.google/resolve?name=$host&type=CNAME")
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
-            connection.connectTimeout = 3000
-            connection.readTimeout = 3000
+            connection.connectTimeout = 1500 // Reduced from 3000
+            connection.readTimeout = 1500    // Reduced from 3000
             connection.setRequestProperty("Accept", "application/json")
 
             if (connection.responseCode == 200) {

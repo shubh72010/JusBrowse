@@ -694,7 +694,7 @@ fun TabWindow(
                                              val url = request?.url?.toString() ?: return null
                                              
                                              // Ad Blocking
-                                             if (adBlockEnabled && runBlocking { viewModel.contentBlocker.shouldBlock(url) }) {
+                                             if (adBlockEnabled && viewModel.contentBlocker.shouldBlockFast(url)) {
                                                  return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
                                              }
                                              

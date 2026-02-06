@@ -62,10 +62,12 @@ import android.view.DragEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.os.Build
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import kotlin.math.abs
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -73,7 +75,8 @@ fun AddressBarWithWebView(
     viewModel: BrowserViewModel,
     tabIndex: Int,
     onOpenAirlockGallery: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    stickerContent: @Composable () -> Unit = {}
 ) {
     val tab = if (tabIndex in viewModel.tabs.indices) viewModel.tabs[tabIndex] else null
     val searchEngine by viewModel.searchEngine.collectAsStateWithLifecycle(initialValue = "DuckDuckGo")
@@ -122,7 +125,100 @@ fun AddressBarWithWebView(
     
     // Focus Requester for Search Bar
     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+
+    // File Upload Handling
+    var cameraImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var filePathCallback by remember { mutableStateOf<android.webkit.ValueCallback<Array<android.net.Uri>>?>(null) }
+    var pendingFileChooserParams by remember { mutableStateOf<android.webkit.WebChromeClient.FileChooserParams?>(null) }
     
+    val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (filePathCallback == null) return@rememberLauncherForActivityResult
+        
+        val data = result.data
+        val results: Array<android.net.Uri>? = if (result.resultCode == android.app.Activity.RESULT_OK) {
+            when {
+                data?.data != null -> arrayOf(data.data!!)
+                data?.clipData != null -> {
+                    val count = data.clipData!!.itemCount
+                    Array(count) { i -> data.clipData!!.getItemAt(i).uri }
+                }
+                cameraImageUri != null -> {
+                    // Check if the camera file actually exists/was written to
+                    val file = java.io.File(context.filesDir, cameraImageUri!!.path?.substringAfterLast("/") ?: "")
+                    if (file.exists() && file.length() > 0) arrayOf(cameraImageUri!!) else null
+                }
+                else -> null
+            }
+        } else null
+        
+        filePathCallback?.onReceiveValue(results)
+        filePathCallback = null
+        pendingFileChooserParams = null
+        // Clear camera URI after use to prevent accidental reuse
+        cameraImageUri = null
+    }
+
+    // Helper to launch the chooser - MUST be defined before use in other launchers
+    fun launchChooser(ctx: android.content.Context, params: android.webkit.WebChromeClient.FileChooserParams, hasCameraPermission: Boolean) {
+        val intentList = mutableListOf<android.content.Intent>()
+        
+        if (hasCameraPermission) {
+            val takePictureIntent = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+            val photoFile = java.io.File(ctx.filesDir, "upload_captured_${System.currentTimeMillis()}.jpg")
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                ctx,
+                "${ctx.packageName}.provider",
+                photoFile
+            )
+            cameraImageUri = uri
+            takePictureIntent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, uri)
+            intentList.add(takePictureIntent)
+        }
+
+        val contentSelectionIntent = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = params.acceptTypes?.firstOrNull { it.isNotEmpty() } ?: "*/*"
+            if (params.mode == android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+                putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true)
+            }
+        }
+
+        val chooserIntent = android.content.Intent(android.content.Intent.ACTION_CHOOSER).apply {
+            putExtra(android.content.Intent.EXTRA_INTENT, contentSelectionIntent)
+            putExtra(android.content.Intent.EXTRA_TITLE, "Upload from")
+            if (intentList.isNotEmpty()) {
+                putExtra(android.content.Intent.EXTRA_INITIAL_INTENTS, intentList.toTypedArray())
+            }
+        }
+
+        try {
+            filePickerLauncher.launch(chooserIntent)
+        } catch (e: Exception) {
+            filePathCallback?.onReceiveValue(null)
+            filePathCallback = null
+            pendingFileChooserParams = null
+        }
+    }
+
+    val mediaPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val cameraGranted = permissions[android.Manifest.permission.CAMERA] ?: false
+        val storageGranted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            permissions[android.Manifest.permission.READ_MEDIA_IMAGES] ?: false
+        } else {
+            permissions[android.Manifest.permission.READ_EXTERNAL_STORAGE] ?: false
+        }
+        
+        // After permission results, launch the chooser
+        val params = pendingFileChooserParams
+        if (params != null) {
+            launchChooser(context, params, cameraGranted)
+        }
+    }
+
     // Auto-focus when expanded
     var hasGainedFocus by remember { mutableStateOf(false) }
 
@@ -160,6 +256,24 @@ fun AddressBarWithWebView(
                 val newOffset = bottomBarOffsetHeightPx.value + (-delta)
                 scope.launch {
                     bottomBarOffsetHeightPx.snapTo(newOffset.coerceIn(0f, bottomBarHeightPx))
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                // If the user swipes UP (finger UP, available.y is negative) at the bottom
+                // and the bar is currently hidden, unhide it.
+                if (available.y < -10f && bottomBarOffsetHeightPx.value > 0f) {
+                    scope.launch {
+                        bottomBarOffsetHeightPx.animateTo(
+                            targetValue = 0f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+                        )
+                    }
                 }
                 return Offset.Zero
             }
@@ -246,11 +360,7 @@ fun AddressBarWithWebView(
                                          val url = request?.url?.toString() ?: return null
                                          
                                          // 1. Ad Blocking
-                                          if (adBlockEnabled && runBlocking { 
-                                              viewModel.contentBlocker.shouldBlock(url) { domain ->
-                                                  viewModel.recordBlockedTracker(tab.id, domain)
-                                              } 
-                                          }) {
+                                          if (adBlockEnabled && viewModel.contentBlocker.shouldBlockFast(url) { domain -> viewModel.recordBlockedTracker(tab.id, domain) }) {
                                               return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
                                           }
                                          
@@ -295,6 +405,44 @@ fun AddressBarWithWebView(
                                           viewModel.updateTabNavigationState(tabIndex, view?.canGoBack() == true, view?.canGoForward() == true)
                                      }
                                  }
+
+                                     webChromeClient = com.jusdots.jusbrowse.security.SecureWebChromeClient(
+                                         onPermissionRequest = { /* Handle permission requests */ }
+                                     ).apply {
+                                         onShowFileChooser = { _, callback, params ->
+                                             if (params == null) {
+                                                 false
+                                             } else {
+                                                 filePathCallback = callback
+                                                 pendingFileChooserParams = params
+                                                 
+                                                 val cameraPermission = ContextCompat.checkSelfPermission(
+                                                     context, android.Manifest.permission.CAMERA
+                                                 ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                                 
+                                                 val storagePermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                     ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                                 } else {
+                                                     ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                                 }
+                                                 
+                                                 if (cameraPermission && storagePermission) {
+                                                     launchChooser(context, params, true)
+                                                 } else {
+                                                     // Request BOTH permissions
+                                                     val perms = mutableListOf(android.Manifest.permission.CAMERA)
+                                                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                         perms.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+                                                     } else {
+                                                         perms.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                                                     }
+                                                     mediaPermissionLauncher.launch(perms.toTypedArray())
+                                                 }
+                                                 true
+                                             }
+                                         }
+                                     }
+
                                  viewModel.registerWebView(tab.id, this)
                                  
                                  val headers = com.jusdots.jusbrowse.security.FakeModeManager.getHeaders()
@@ -307,6 +455,9 @@ fun AddressBarWithWebView(
                          }
                      },
                      update = { webView ->
+                         // Lifecycle management: resume when active
+                         webView.onResume()
+                         
                          // DYNAMIC PERSONA UPDATE
                          val fakeModeUA = com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent()
                          val targetUA = fakeModeUA ?: android.webkit.WebSettings.getDefaultUserAgent(webView.context)
@@ -330,7 +481,10 @@ fun AddressBarWithWebView(
                             }
                          }
                      },
-                     modifier = Modifier.fillMaxSize()
+                     onRelease = { webView ->
+                         // Layer 14: Pausing background activity without clearing state
+                         webView.onPause()
+                     }
                  )
              }
             } else {
@@ -359,19 +513,21 @@ fun AddressBarWithWebView(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(40.dp)
+                .height(60.dp)
                 .pointerInput(Unit) {
-                    detectDragGestures { change, dragAmount ->
-                        if (dragAmount.y < -10f && bottomBarOffsetHeightPx.value > 0f) {
-                            change.consume()
-                            scope.launch {
-                                bottomBarOffsetHeightPx.animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
-                                )
+                    detectDragGestures(
+                        onDrag = { change, dragAmount ->
+                            if (dragAmount.y < -10f && bottomBarOffsetHeightPx.value > 0f) {
+                                change.consume()
+                                scope.launch {
+                                    bottomBarOffsetHeightPx.animateTo(
+                                        targetValue = 0f,
+                                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+                                    )
+                                }
                             }
                         }
-                    }
+                    )
                 }
         )
         
@@ -389,11 +545,15 @@ fun AddressBarWithWebView(
             )
         }
         
+        // Sticker Content Layer (Above webview/background, below controls)
+        stickerContent()
+        
         // 2. Floating Pill Bar (Bottom)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
+                .imePadding()
                 .padding(bottom = 16.dp)
                 .offset { 
                     androidx.compose.ui.unit.IntOffset(
@@ -474,13 +634,12 @@ fun AddressBarWithWebView(
                     } else Modifier
                 )
         ) {
-            // Blurred Background Layer (60% Blur effect using ~16dp radius)
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .blur(16.dp)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
-            )
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .blur(20.dp)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                )
 
             // Content Container
             Box(modifier = Modifier.fillMaxSize()) {
@@ -495,6 +654,7 @@ fun AddressBarWithWebView(
                         onValueChange = { urlText = it },
                         modifier = Modifier
                             .weight(1f)
+                            .padding(vertical = 12.dp)
                             .focusRequester(focusRequester)
                             .onFocusChanged { focusState ->
                                 if (focusState.isFocused) {

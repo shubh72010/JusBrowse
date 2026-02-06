@@ -406,11 +406,13 @@ fun SettingsScreen(
                                                     val deltaX = dragAmount.x / (screenWidth.value * d)
                                                     val deltaY = dragAmount.y / (screenHeight.value * d)
                                                     
-                                                    viewModel.updateStickerPosition(
+                                                    viewModel.updateStickerTransform(
                                                         sticker.id,
                                                         (sticker.x + deltaX).coerceIn(0f, 1f),
                                                         (sticker.y + deltaY).coerceIn(0f, 1f),
-                                                        persist = false
+                                                        sticker.widthDp,
+                                                        sticker.heightDp,
+                                                        sticker.rotation
                                                     )
                                                 }
                                             )

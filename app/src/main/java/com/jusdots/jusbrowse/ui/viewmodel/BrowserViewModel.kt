@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.jusdots.jusbrowse.security.ContentBlocker
+import kotlinx.coroutines.*
 import java.util.UUID
 
 data class WindowState(
@@ -70,8 +71,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     // Window Management
     val tabWindowStates: SnapshotStateMap<String, WindowState> = mutableStateMapOf()
 
-    // WebView Pool to keep instances alive
-    private val webViewPool = mutableMapOf<String, WebView>()
+    // WebView Pool to keep instances alive (LinkedHashMap for LRU-ish order)
+    private val webViewPool = LinkedHashMap<String, WebView>(10, 0.75f, true)
 
     // Bookmarks, History & Downloads
     val bookmarks = bookmarkRepository.getAllBookmarks()
@@ -84,6 +85,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     // Stickers
     val stickers: SnapshotStateList<Sticker> = mutableStateListOf()
+    private val _selectedStickerId = MutableStateFlow<String?>(null)
+    val selectedStickerId = _selectedStickerId.asStateFlow()
+
+    fun setSelectedStickerId(id: String?) {
+        _selectedStickerId.value = id
+    }
 
     // Preferences
     val searchEngine = preferencesRepository.searchEngine
@@ -157,12 +164,33 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     
     // Tracker Visualization
     val blockedTrackers = mutableStateMapOf<String, SnapshotStateList<TrackerInfo>>()
+    private val trackerUpdateBatch = mutableMapOf<String, MutableSet<String>>()
+    private var trackerBatchJob: kotlinx.coroutines.Job? = null
 
     fun recordBlockedTracker(tabId: String, domain: String) {
-        val list = blockedTrackers.getOrPut(tabId) { mutableStateListOf() }
-        // Keep only unique domains per tab for visualization simplicity, or all with timestamps
-        if (list.none { it.domain == domain }) {
-            list.add(0, TrackerInfo(domain))
+        synchronized(trackerUpdateBatch) {
+            trackerUpdateBatch.getOrPut(tabId) { mutableSetOf() }.add(domain)
+        }
+        
+        // Start a debounced/throttled update job if not already running or scheduled
+        if (trackerBatchJob == null || trackerBatchJob?.isCompleted == true) {
+            trackerBatchJob = viewModelScope.launch {
+                kotlinx.coroutines.delay(1000) // Batch for 1 second
+                val updates = synchronized(trackerUpdateBatch) {
+                    val copy = trackerUpdateBatch.toMap()
+                    trackerUpdateBatch.clear()
+                    copy
+                }
+                
+                updates.forEach { (tid, domains) ->
+                    val list = blockedTrackers.getOrPut(tid) { mutableStateListOf() }
+                    domains.forEach { dom ->
+                        if (list.none { it.domain == dom }) {
+                            list.add(0, TrackerInfo(dom))
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -334,6 +362,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun registerWebView(tabId: String, webView: WebView) {
         webViewPool[tabId] = webView
+        
+        // Layer 13: Prune pool if hardware decoders are exhausted (or just too many tabs)
+        // Keep active and high-priority tabs, but cap background instances to 5
+        if (webViewPool.size > 5) {
+            val oldestId = webViewPool.keys.firstOrNull { it != tabId && it != tabs.getOrNull(_activeTabIndex.value)?.id }
+            if (oldestId != null) {
+                webViewPool[oldestId]?.destroy()
+                webViewPool.remove(oldestId)
+            }
+        }
     }
 
     // Window Management
@@ -1013,7 +1051,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    // Sticker Management
     fun addSticker(imageUri: String, link: String? = null) {
         val newSticker = Sticker(
             id = UUID.randomUUID().toString(),
@@ -1021,17 +1058,25 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             link = link,
             x = 0.5f,
             y = 0.5f,
-            rotation = (-15..15).random().toFloat()
+            widthDp = 512f,
+            heightDp = 512f,
+            rotation = 0f
         )
         stickers.add(newSticker)
         saveStickers()
     }
 
-    fun updateStickerPosition(stickerId: String, x: Float, y: Float, persist: Boolean = true) {
-        val index = stickers.indexOfFirst { it.id == stickerId }
+    fun updateStickerTransform(id: String, x: Float, y: Float, widthDp: Float, heightDp: Float, rotation: Float) {
+        val index = stickers.indexOfFirst { it.id == id }
         if (index != -1) {
-            stickers[index] = stickers[index].copy(x = x, y = y)
-            if (persist) saveStickers()
+            stickers[index] = stickers[index].copy(
+                x = x,
+                y = y,
+                widthDp = widthDp,
+                heightDp = heightDp,
+                rotation = rotation
+            )
+            saveStickers()
         }
     }
 
@@ -1048,9 +1093,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         saveStickers()
     }
 
+    private var stickerSaveJob: Job? = null
+
     fun saveStickers() {
-        viewModelScope.launch {
-            val json = gson.toJson(stickers.toList())
+        stickerSaveJob?.cancel()
+        stickerSaveJob = viewModelScope.launch {
+            delay(500) // Debounce for 500ms
+            val stickersList = stickers.toList()
+            val json = withContext(Dispatchers.Default) {
+                gson.toJson(stickersList)
+            }
             preferencesRepository.saveStickers(json)
         }
     }

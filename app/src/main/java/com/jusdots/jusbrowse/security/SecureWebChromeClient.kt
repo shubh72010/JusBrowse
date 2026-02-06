@@ -140,4 +140,17 @@ class SecureWebChromeClient(
         // For now, block all popups. Can be enhanced to check SiteSettings.popupsAllowed
         return false
     }
+
+    /**
+     * Handle file selection for uploads (Layer 1)
+     */
+    var onShowFileChooser: ((WebView?, android.webkit.ValueCallback<Array<android.net.Uri>>?, FileChooserParams?) -> Boolean)? = null
+
+    override fun onShowFileChooser(
+        webView: WebView?,
+        filePathCallback: android.webkit.ValueCallback<Array<android.net.Uri>>?,
+        fileChooserParams: FileChooserParams?
+    ): Boolean {
+        return onShowFileChooser?.invoke(webView, filePathCallback, fileChooserParams) ?: super.onShowFileChooser(webView, filePathCallback, fileChooserParams)
+    }
 }
