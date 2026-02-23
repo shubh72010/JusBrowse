@@ -5,6 +5,7 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.ProfileStore
 import androidx.webkit.Profile
 import androidx.webkit.WebViewFeature
+import android.annotation.SuppressLint
 
 object ContainerManager {
     val AVAILABLE_CONTAINERS = listOf("default", "work", "personal", "banking", "sandbox")
@@ -13,6 +14,7 @@ object ContainerManager {
      * Set the profile for a WebView if supported.
      * Profile isolation ensures separate cookies, cache, and storage.
      */
+    @SuppressLint("RestrictedApi")
     fun applyContainer(webView: android.webkit.WebView, containerId: String?) {
         if (containerId == null || containerId == "default") return
 
@@ -43,6 +45,7 @@ object ContainerManager {
     /**
      * Deletes all profiles to reset state (Nuclear Reset)
      */
+    @SuppressLint("RestrictedApi")
     fun clearAllProfiles(context: Context) {
         try {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {

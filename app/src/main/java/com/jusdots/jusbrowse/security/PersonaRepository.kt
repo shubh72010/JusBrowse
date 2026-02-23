@@ -41,24 +41,6 @@ object PersonaRepository {
         locale = "en-US",
         languages = listOf("en-US", "en"),
         timezone = "America/New_York",
-        clockSkewMs = 12,
-        networkType = "4g",
-        networkDownlink = 12.5,
-        networkRtt = 45,
-        webglMaxTextureSize = 8192,
-        webglMaxRenderBufferSize = 8192,
-        webglExtensions = listOf(
-            "EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "OES_standard_derivatives",
-            "WEBGL_debug_renderer_info", "WEBGL_lose_context", "ANGLE_instanced_arrays"
-        ),
-        webglParams = mapOf(
-            34047 to 16.0,    // MAX_TEXTURE_MAX_ANISOTROPY_EXT
-            34076 to 8192,    // MAX_3D_TEXTURE_SIZE
-            36183 to 16,      // MAX_COLOR_ATTACHMENTS
-            34024 to 16       // MAX_DRAW_BUFFERS
-        ),
-        audioBaseLatency = 0.012,
-        fontJitterSeed = 101L
     )
 
     private val PIXEL_7A = FakePersona(
@@ -95,21 +77,6 @@ object PersonaRepository {
         locale = "en-US",
         languages = listOf("en-US", "en"),
         timezone = "America/Chicago",
-        clockSkewMs = -5,
-        networkType = "4g",
-        networkDownlink = 5.0,
-        networkRtt = 60,
-        webglMaxTextureSize = 4096,
-        webglMaxRenderBufferSize = 4096,
-        webglExtensions = listOf("EXT_blend_minmax", "EXT_sRGB", "OES_texture_float"),
-        webglParams = mapOf(
-            34047 to 8.0,     // MAX_TEXTURE_MAX_ANISOTROPY_EXT
-            34076 to 4096,    // MAX_3D_TEXTURE_SIZE
-            36183 to 8,       // MAX_COLOR_ATTACHMENTS
-            34024 to 8        // MAX_DRAW_BUFFERS
-        ),
-        audioBaseLatency = 0.018,
-        fontJitterSeed = 102L
     )
 
     // --- SAMSUNG GROUP ---
@@ -147,21 +114,6 @@ object PersonaRepository {
         locale = "ko-KR",
         languages = listOf("ko-KR", "ko", "en-US", "en"),
         timezone = "Asia/Seoul",
-        clockSkewMs = 15,
-        networkType = "5g",
-        networkDownlink = 20.0,
-        networkRtt = 30,
-        webglMaxTextureSize = 16384,
-        webglMaxRenderBufferSize = 16384,
-        webglExtensions = listOf("EXT_blend_minmax", "EXT_sRGB", "OES_texture_float", "WEBGL_debug_renderer_info"),
-        webglParams = mapOf(
-            34047 to 16.0,    // MAX_TEXTURE_MAX_ANISOTROPY_EXT
-            34076 to 16384,   // MAX_3D_TEXTURE_SIZE
-            36183 to 16,      // MAX_COLOR_ATTACHMENTS
-            34024 to 16       // MAX_DRAW_BUFFERS
-        ),
-        audioBaseLatency = 0.006,
-        fontJitterSeed = 201L
     )
 
     private val GALAXY_A54 = FakePersona(
@@ -198,20 +150,6 @@ object PersonaRepository {
         locale = "en-GB",
         languages = listOf("en-GB", "en"),
         timezone = "Europe/London",
-        clockSkewMs = 3,
-        networkType = "4g",
-        networkDownlink = 8.0,
-        networkRtt = 50,
-        webglMaxTextureSize = 8192,
-        webglMaxRenderBufferSize = 8192,
-        webglParams = mapOf(
-            34047 to 8.0,     // MAX_TEXTURE_MAX_ANISOTROPY_EXT
-            34076 to 8192,    // MAX_3D_TEXTURE_SIZE
-            36183 to 8,       // MAX_COLOR_ATTACHMENTS
-            34024 to 8        // MAX_DRAW_BUFFERS
-        ),
-        audioBaseLatency = 0.022,
-        fontJitterSeed = 202L
     )
 
     // --- XIAOMI GROUP ---
@@ -249,20 +187,6 @@ object PersonaRepository {
         locale = "zh-CN",
         languages = listOf("zh-CN", "zh", "en-US", "en"),
         timezone = "Asia/Shanghai",
-        clockSkewMs = -2,
-        networkType = "wifi",
-        networkDownlink = 100.0,
-        networkRtt = 10,
-        webglMaxTextureSize = 16384,
-        webglMaxRenderBufferSize = 16384,
-        webglParams = mapOf(
-            34047 to 16.0,    // MAX_TEXTURE_MAX_ANISOTROPY_EXT
-            34076 to 16384,   // MAX_3D_TEXTURE_SIZE
-            36183 to 16,      // MAX_COLOR_ATTACHMENTS
-            34024 to 16       // MAX_DRAW_BUFFERS
-        ),
-        audioBaseLatency = 0.007,
-        fontJitterSeed = 301L
     )
 
     private val REDMI_NOTE_13 = FakePersona(
@@ -299,20 +223,6 @@ object PersonaRepository {
         locale = "en-US",
         languages = listOf("en-US", "en"),
         timezone = "Asia/Kolkata",
-        clockSkewMs = 8,
-        networkType = "4g",
-        networkDownlink = 15.0,
-        networkRtt = 40,
-        webglMaxTextureSize = 8192,
-        webglMaxRenderBufferSize = 8192,
-        webglParams = mapOf(
-            34047 to 8.0,     // MAX_TEXTURE_MAX_ANISOTROPY_EXT
-            34076 to 8192,    // MAX_3D_TEXTURE_SIZE
-            36183 to 8,       // MAX_COLOR_ATTACHMENTS
-            34024 to 8        // MAX_DRAW_BUFFERS
-        ),
-        audioBaseLatency = 0.025,
-        fontJitterSeed = 302L
     )
 
     private val MOTO_EDGE_50_ULTRA = FakePersona(
@@ -349,20 +259,6 @@ object PersonaRepository {
         locale = "en-US",
         languages = listOf("en-US", "en"),
         timezone = "America/Chicago",
-        clockSkewMs = -3,
-        networkType = "5g",
-        networkDownlink = 25.0,
-        networkRtt = 35,
-        webglMaxTextureSize = 16384,
-        webglMaxRenderBufferSize = 16384,
-        webglParams = mapOf(
-            34047 to 16.0,    // MAX_TEXTURE_MAX_ANISOTROPY_EXT
-            34076 to 16384,   // MAX_3D_TEXTURE_SIZE
-            36183 to 16,      // MAX_COLOR_ATTACHMENTS
-            34024 to 16       // MAX_DRAW_BUFFERS
-        ),
-        audioBaseLatency = 0.010,
-        fontJitterSeed = 402L
     )
 
     private val MOTO_G54 = FakePersona(
@@ -399,20 +295,6 @@ object PersonaRepository {
         locale = "en-US",
         languages = listOf("en-US", "en"),
         timezone = "America/Los_Angeles",
-        clockSkewMs = 2,
-        networkType = "4g",
-        networkDownlink = 10.0,
-        networkRtt = 55,
-        webglMaxTextureSize = 4096,
-        webglMaxRenderBufferSize = 4096,
-        webglParams = mapOf(
-            34047 to 4.0,     // MAX_TEXTURE_MAX_ANISOTROPY_EXT
-            34076 to 4096,    // MAX_3D_TEXTURE_SIZE
-            36183 to 4,       // MAX_COLOR_ATTACHMENTS
-            34024 to 4        // MAX_DRAW_BUFFERS
-        ),
-        audioBaseLatency = 0.030,
-        fontJitterSeed = 401L
     )
 
     // DISABLED: iPhone 15 Pro - Android WebView cannot emulate Safari.

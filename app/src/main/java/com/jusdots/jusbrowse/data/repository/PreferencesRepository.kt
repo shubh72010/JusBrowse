@@ -41,11 +41,12 @@ class PreferencesRepository(private val context: Context) {
         val AMOLED_BLACK_ENABLED = booleanPreferencesKey("amoled_black_enabled")
         val START_PAGE_WALLPAPER_URI = stringPreferencesKey("start_page_wallpaper_uri")
         val START_PAGE_BLUR_AMOUNT = stringPreferencesKey("start_page_blur_amount")
+        val CUSTOM_DOH_URL = stringPreferencesKey("custom_doh_url")
         
         // Engines
         val DEFAULT_ENGINE_ENABLED = booleanPreferencesKey("default_engine_enabled")
         val JUS_FAKE_ENGINE_ENABLED = booleanPreferencesKey("jus_fake_engine_enabled")
-        val RANDOMISER_ENGINE_ENABLED = booleanPreferencesKey("randomiser_engine_enabled")
+        val BORING_ENGINE_ENABLED = booleanPreferencesKey("boring_engine_enabled")
         val MULTI_MEDIA_PLAYBACK_ENABLED = booleanPreferencesKey("multi_media_playback_enabled")
         val APP_FONT = stringPreferencesKey("app_font")
         val BACKGROUND_PRESET = stringPreferencesKey("background_preset")
@@ -121,6 +122,10 @@ class PreferencesRepository(private val context: Context) {
 
     val koodousApiKey: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[PreferenceKeys.KOODOUS_API_KEY] ?: ""
+    }
+
+    val customDohUrl: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.CUSTOM_DOH_URL] ?: ""
     }
 
     suspend fun setSearchEngine(searchEngine: String) {
@@ -225,6 +230,12 @@ class PreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun setCustomDohUrl(url: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferenceKeys.CUSTOM_DOH_URL] = url
+        }
+    }
+
     // ============ NEW UI CUSTOMIZATION PREFERENCES ============
 
     val follianMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -312,8 +323,8 @@ class PreferencesRepository(private val context: Context) {
         preferences[PreferenceKeys.JUS_FAKE_ENGINE_ENABLED] ?: false
     }
 
-    val randomiserEngineEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[PreferenceKeys.RANDOMISER_ENGINE_ENABLED] ?: false
+    val boringEngineEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.BORING_ENGINE_ENABLED] ?: false
     }
 
     val multiMediaPlaybackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -340,9 +351,9 @@ class PreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun setRandomiserEngineEnabled(enabled: Boolean) {
+    suspend fun setBoringEngineEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
-            preferences[PreferenceKeys.RANDOMISER_ENGINE_ENABLED] = enabled
+            preferences[PreferenceKeys.BORING_ENGINE_ENABLED] = enabled
         }
     }
 

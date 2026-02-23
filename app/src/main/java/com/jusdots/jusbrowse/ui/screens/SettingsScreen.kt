@@ -70,6 +70,7 @@ fun SettingsScreen(
     val showTabIcons by viewModel.showTabIcons.collectAsStateWithLifecycle(initialValue = false)
     val vtApiKey by viewModel.virusTotalApiKey.collectAsStateWithLifecycle(initialValue = "")
     val koodousApiKey by viewModel.koodousApiKey.collectAsStateWithLifecycle(initialValue = "")
+    val customDohUrl by viewModel.customDohUrl.collectAsStateWithLifecycle(initialValue = "")
     val follianMode by viewModel.follianMode.collectAsStateWithLifecycle(initialValue = false)
     val amoledBlackEnabled by viewModel.amoledBlackEnabled.collectAsStateWithLifecycle(initialValue = false)
     val appFont by viewModel.appFont.collectAsStateWithLifecycle(initialValue = "SYSTEM")
@@ -79,7 +80,7 @@ fun SettingsScreen(
     // Engines
     val defaultEngineEnabled by viewModel.defaultEngineEnabled.collectAsStateWithLifecycle(initialValue = true)
     val jusFakeEngineEnabled by viewModel.jusFakeEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val randomiserEngineEnabled by viewModel.randomiserEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val boringEngineEnabled by viewModel.boringEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
     val multiMediaPlaybackEnabled by viewModel.multiMediaPlaybackEnabled.collectAsStateWithLifecycle(initialValue = false)
     
     // Fake Mode state
@@ -606,10 +607,10 @@ fun SettingsScreen(
             }
 
             SettingsSwitch(
-                title = "Randomiser Engine",
-                subtitle = "Brave-style randomized fingerprinting protection",
-                checked = randomiserEngineEnabled,
-                onCheckedChange = { viewModel.setRandomiserEngineEnabled(it) }
+                title = "Boring Engine",
+                subtitle = "Boring. Stable. Forgettable. (Session-Locked)",
+                checked = boringEngineEnabled,
+                onCheckedChange = { viewModel.setBoringEngineEnabled(it) }
             )
 
             SettingsSwitch(
@@ -829,6 +830,16 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+            )
+
+            OutlinedTextField(
+                value = customDohUrl,
+                onValueChange = { viewModel.setCustomDohUrl(it) },
+                label = { Text("Custom DNS over HTTPS (DoH) URL") },
+                placeholder = { Text("https://cloudflare-dns.com/dns-query") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                supportingText = { Text("Leave empty for default (Google DoH). Note: Must support JSON formatting.") }
             )
         }
     }

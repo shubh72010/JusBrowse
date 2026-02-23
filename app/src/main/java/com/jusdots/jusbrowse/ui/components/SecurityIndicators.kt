@@ -221,7 +221,9 @@ fun DownloadWarningDialog(
     warningMessage: String,
     isBlocked: Boolean,
     onConfirm: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onScanVirusTotal: (() -> Unit)? = null,
+    onScanKoodous: (() -> Unit)? = null
 ) {
     val isSafeDownload = warningMessage.startsWith("Download") && !isBlocked
     
@@ -244,9 +246,21 @@ fun DownloadWarningDialog(
             Text(text = warningMessage)
         },
         confirmButton = {
-            if (!isBlocked) {
-                TextButton(onClick = onConfirm) {
-                    Text(if (isSafeDownload) "Download" else "Download Anyway")
+            Column(horizontalAlignment = Alignment.End) {
+                if (!isBlocked) {
+                    TextButton(onClick = onConfirm) {
+                        Text(if (isSafeDownload) "Download" else "Download Anyway")
+                    }
+                }
+                if (onScanVirusTotal != null) {
+                    TextButton(onClick = onScanVirusTotal) {
+                        Text("Scan with VirusTotal")
+                    }
+                }
+                if (onScanKoodous != null) {
+                    TextButton(onClick = onScanKoodous) {
+                        Text("Scan with Koodous")
+                    }
                 }
             }
         },

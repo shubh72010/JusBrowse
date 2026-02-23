@@ -20,7 +20,9 @@ import kotlinx.coroutines.flow.asStateFlow
 class SecureWebChromeClient(
     private val onPermissionRequest: (PermissionRequestInfo) -> Unit,
     private val onProgressChanged: (Int) -> Unit = {},
-    private val onTitleChanged: (String) -> Unit = {}
+    private val onTitleChanged: (String) -> Unit = {},
+    private val onShowCustomViewCallback: ((android.view.View, android.webkit.WebChromeClient.CustomViewCallback) -> Unit)? = null,
+    private val onHideCustomViewCallback: (() -> Unit)? = null
 ) : WebChromeClient() {
 
     data class PermissionRequestInfo(
@@ -152,5 +154,17 @@ class SecureWebChromeClient(
         fileChooserParams: FileChooserParams?
     ): Boolean {
         return onShowFileChooser?.invoke(webView, filePathCallback, fileChooserParams) ?: super.onShowFileChooser(webView, filePathCallback, fileChooserParams)
+    }
+
+    override fun onShowCustomView(view: android.view.View?, callback: CustomViewCallback?) {
+        if (view != null && callback != null) {
+            onShowCustomViewCallback?.invoke(view, callback)
+        } else {
+            super.onShowCustomView(view, callback)
+        }
+    }
+
+    override fun onHideCustomView() {
+        onHideCustomViewCallback?.invoke() ?: super.onHideCustomView()
     }
 }

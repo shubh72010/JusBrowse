@@ -39,6 +39,9 @@ import com.google.gson.reflect.TypeToken
 import com.jusdots.jusbrowse.security.ContentBlocker
 import kotlinx.coroutines.*
 import java.util.UUID
+import android.content.Context
+import kotlinx.coroutines.flow.stateIn
+import com.jusdots.jusbrowse.security.FakeModeManager
 
 data class WindowState(
     var x: Float = 0f,
@@ -94,7 +97,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     // Preferences
     val searchEngine = preferencesRepository.searchEngine
-    val homePage = preferencesRepository.homePage
+    val homePage: StateFlow<String> = preferencesRepository.homePage.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, "about:blank")
     val javascriptEnabled = preferencesRepository.javascriptEnabled
     val darkMode = preferencesRepository.darkMode
     val adBlockEnabled = preferencesRepository.adBlockEnabled
@@ -111,11 +114,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val startPageWallpaperUri = preferencesRepository.startPageWallpaperUri
     val startPageBlurAmount = preferencesRepository.startPageBlurAmount
     val backgroundPreset = preferencesRepository.backgroundPreset
+    val customDohUrl: StateFlow<String> = preferencesRepository.customDohUrl.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, "")
     
     // Engines
     val defaultEngineEnabled = preferencesRepository.defaultEngineEnabled
     val jusFakeEngineEnabled = preferencesRepository.jusFakeEngineEnabled
-    val randomiserEngineEnabled = preferencesRepository.randomiserEngineEnabled
+    val boringEngineEnabled = preferencesRepository.boringEngineEnabled
     val multiMediaPlaybackEnabled = preferencesRepository.multiMediaPlaybackEnabled
     val appFont = preferencesRepository.appFont
 
@@ -126,7 +130,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val _isStickerMode = MutableStateFlow(false)
     val isStickerMode: StateFlow<Boolean> = _isStickerMode.asStateFlow()
 
+    private val _isBoomerMode = MutableStateFlow(false)
+    val isBoomerMode: StateFlow<Boolean> = _isBoomerMode.asStateFlow()
+
+    fun toggleBoomerMode() {
+        _isBoomerMode.value = !_isBoomerMode.value
+    }
+
     val stickersEnabled = preferencesRepository.stickersEnabled
+
+
 
     // Multi-View Mode
     private val _isMultiViewMode = MutableStateFlow(false)
@@ -147,6 +160,61 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             // Check if URL is already open in any tab to avoid duplicates? 
             // For now, just open new tab for every external intent
             createNewTab(url)
+        }
+    }
+
+    // Scanning State
+    var showScanResultDialog by mutableStateOf(false)
+    var scanResultMessage by mutableStateOf("")
+
+    private suspend fun downloadToTempFile(url: String, context: Context): java.io.File? = withContext(Dispatchers.IO) {
+        try {
+            val file = java.io.File(context.cacheDir, "temp_scan_" + java.util.UUID.randomUUID().toString())
+            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "GET"
+            
+            val headers = FakeModeManager.getHeaders()
+            for ((key, value) in headers) {
+                connection.setRequestProperty(key, value)
+            }
+            
+            if (connection.responseCode == 200) {
+                connection.inputStream.use { input ->
+                    file.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                return@withContext file
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        null
+    }
+
+    fun scanFile(url: String, scannerType: String, context: Context) {
+        viewModelScope.launch {
+            scanResultMessage = "Downloading file for scanning..."
+            showScanResultDialog = true
+            
+            val tempFile = downloadToTempFile(url, context)
+            if (tempFile == null) {
+                scanResultMessage = "Error: Failed to download file for scanning."
+                return@launch
+            }
+
+            scanResultMessage = "Scanning with $scannerType..."
+            
+            val result = if (scannerType == "VirusTotal") {
+                val apiKey = virusTotalApiKey.first() ?: ""
+                com.jusdots.jusbrowse.security.ApiScanner.scanWithVirusTotal(tempFile, apiKey)
+            } else {
+                val apiKey = koodousApiKey.first() ?: ""
+                com.jusdots.jusbrowse.security.ApiScanner.scanWithKoodous(tempFile, apiKey)
+            }
+            
+            tempFile.delete()
+            scanResultMessage = result
         }
     }
 
@@ -244,6 +312,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 } else {
                     _extractedWallColor.value = null
                 }
+            }
+        }
+        
+        viewModelScope.launch {
+            customDohUrl.collect { url ->
+                contentBlocker.customDohUrl = url
             }
         }
     }
@@ -402,10 +476,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun createNewTab(url: String = "about:blank", isPrivate: Boolean = false, containerId: String = "default", select: Boolean = true) {
+        val finalUrl = if (url == "about:blank" && homePage.value != "about:blank") homePage.value else url
         val newTabId = UUID.randomUUID().toString()
         val newTab = BrowserTab(
             id = newTabId,
-            url = url,
+            url = finalUrl,
             isPrivate = isPrivate,
             containerId = containerId
         )
@@ -811,6 +886,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setCustomDohUrl(url: String) {
+        viewModelScope.launch {
+            preferencesRepository.setCustomDohUrl(url)
+        }
+    }
+
     fun setKoodousApiKey(key: String) {
         viewModelScope.launch {
             preferencesRepository.setKoodousApiKey(key)
@@ -864,7 +945,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             if (enabled) {
                 preferencesRepository.setDefaultEngineEnabled(true)
-                preferencesRepository.setRandomiserEngineEnabled(false)
+                preferencesRepository.setBoringEngineEnabled(false)
                 preferencesRepository.setJusFakeEngineEnabled(false)
             } else {
                 preferencesRepository.setDefaultEngineEnabled(false)
@@ -879,7 +960,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 // to handle the restart/context correctly. 
                 // However, for consistency, we update preferences.
                 preferencesRepository.setJusFakeEngineEnabled(true)
-                preferencesRepository.setRandomiserEngineEnabled(false)
+                preferencesRepository.setBoringEngineEnabled(false)
                 preferencesRepository.setDefaultEngineEnabled(false)
             } else {
                 preferencesRepository.setJusFakeEngineEnabled(false)
@@ -891,7 +972,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             // 1. Save preferences FIRST and Wait
             preferencesRepository.setJusFakeEngineEnabled(true)
-            preferencesRepository.setRandomiserEngineEnabled(false)
+            preferencesRepository.setBoringEngineEnabled(false)
             preferencesRepository.setDefaultEngineEnabled(false)
             
             // 2. Important: Sync other states if needed
@@ -901,14 +982,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setRandomiserEngineEnabled(enabled: Boolean) {
+    fun setBoringEngineEnabled(enabled: Boolean) {
         viewModelScope.launch {
             if (enabled) {
-                preferencesRepository.setRandomiserEngineEnabled(true)
+                preferencesRepository.setBoringEngineEnabled(true)
                 preferencesRepository.setDefaultEngineEnabled(false)
                 preferencesRepository.setJusFakeEngineEnabled(false)
             } else {
-                preferencesRepository.setRandomiserEngineEnabled(false)
+                preferencesRepository.setBoringEngineEnabled(false)
             }
         }
     }
@@ -1105,5 +1186,69 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             }
             preferencesRepository.saveStickers(json)
         }
+    }
+
+    companion object {
+        const val ENABLE_BOOMER_MODE_SCRIPT = """
+            (function() {
+                if (window.__boomerModeEnabled) return;
+                window.__boomerModeEnabled = true;
+
+                // Add a dynamic style tag for the hover effect
+                var style = document.createElement('style');
+                style.id = '__boomer_hover_style';
+                style.innerHTML = '.__boomer_hover { outline: 2px dashed red !important; cursor: crosshair !important; background-color: rgba(255,0,0,0.1) !important; }';
+                document.head.appendChild(style);
+
+                var prevElement = null;
+
+                window.__boomerMouseOver = function(e) {
+                    if (!window.__boomerModeEnabled) return;
+                    e.stopPropagation();
+                    if (prevElement && prevElement !== e.target) {
+                        prevElement.classList.remove('__boomer_hover');
+                    }
+                    e.target.classList.add('__boomer_hover');
+                    prevElement = e.target;
+                };
+
+                window.__boomerMouseOut = function(e) {
+                    if (!window.__boomerModeEnabled) return;
+                    e.stopPropagation();
+                    e.target.classList.remove('__boomer_hover');
+                };
+
+                window.__boomerClick = function(e) {
+                    if (!window.__boomerModeEnabled) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.target.classList.remove('__boomer_hover');
+                    e.target.style.display = 'none'; // Boom!
+                };
+
+                document.addEventListener('mouseover', window.__boomerMouseOver, true);
+                document.addEventListener('mouseout', window.__boomerMouseOut, true);
+                document.addEventListener('click', window.__boomerClick, true);
+            })();
+        """
+
+        const val DISABLE_BOOMER_MODE_SCRIPT = """
+            (function() {
+                if (!window.__boomerModeEnabled) return;
+                window.__boomerModeEnabled = false;
+                
+                var style = document.getElementById('__boomer_hover_style');
+                if (style) style.remove();
+                
+                var hoveredEls = document.querySelectorAll('.__boomer_hover');
+                hoveredEls.forEach(function(el) {
+                    el.classList.remove('__boomer_hover');
+                });
+
+                document.removeEventListener('mouseover', window.__boomerMouseOver, true);
+                document.removeEventListener('mouseout', window.__boomerMouseOut, true);
+                document.removeEventListener('click', window.__boomerClick, true);
+            })();
+        """
     }
 }

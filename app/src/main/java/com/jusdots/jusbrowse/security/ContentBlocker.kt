@@ -12,6 +12,7 @@ import java.io.InputStreamReader
 class ContentBlocker(context: Context) {
     private val blockedDomains = HashSet<String>()
     private val blockCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    var customDohUrl: String = ""
 
     init {
         try {
@@ -56,7 +57,7 @@ class ContentBlocker(context: Context) {
         
         // 2. CNAME Uncloaking: Only if host seems like a tracker or is a subdomain
         if (host.count { it == '.' } > 1) { 
-            val cnameTarget = DnsResolver.resolveCname(host)
+            val cnameTarget = DnsResolver.resolveCname(host, customDohUrl)
             if (cnameTarget != null && isDomainBlocked(cnameTarget)) {
                 blockCache[host] = true
                 onTrackerBlocked(cnameTarget)

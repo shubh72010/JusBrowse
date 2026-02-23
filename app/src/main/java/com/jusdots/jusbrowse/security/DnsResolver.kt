@@ -16,12 +16,19 @@ object DnsResolver {
      * Resolves the CNAME for a given host using Google DNS-over-HTTPS.
      * Returns the target domain if a CNAME exists, or null otherwise.
      */
-    suspend fun resolveCname(host: String): String? = withContext(Dispatchers.IO) {
+    suspend fun resolveCname(host: String, customDohUrl: String? = null): String? = withContext(Dispatchers.IO) {
         // Return from cache if available
         cnameCache[host]?.let { if (it == "NONE") return@withContext null else return@withContext it }
 
         try {
-            val url = URL("https://dns.google/resolve?name=$host&type=CNAME")
+            val endpoint = if (!customDohUrl.isNullOrBlank()) {
+                val urlObj = try { URL(customDohUrl) } catch(e: Exception) { null }
+                val sep = if (urlObj?.query != null) "&" else "?"
+                "$customDohUrl${sep}name=$host&type=CNAME"
+            } else {
+                "https://dns.google/resolve?name=$host&type=CNAME"
+            }
+            val url = URL(endpoint)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = 1500 // Reduced from 3000

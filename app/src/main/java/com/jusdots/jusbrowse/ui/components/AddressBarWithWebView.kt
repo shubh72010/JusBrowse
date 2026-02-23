@@ -87,7 +87,7 @@ fun AddressBarWithWebView(
     // Engines
     val defaultEngineEnabled by viewModel.defaultEngineEnabled.collectAsStateWithLifecycle(initialValue = true)
     val jusFakeEnabled by viewModel.jusFakeEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val randomiserEnabled by viewModel.randomiserEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val boringEnabled by viewModel.boringEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
     
     // PILL BAR STATES
     var isPillExpanded by remember { mutableStateOf(false) }
@@ -95,6 +95,10 @@ fun AddressBarWithWebView(
 
     // Local state for the address bar text
     var urlText by remember { mutableStateOf(tab?.url?.replace("about:blank", "") ?: "") }
+    
+    // Fullscreen Media State
+    var fullscreenView by remember { mutableStateOf<android.view.View?>(null) }
+    var fullscreenCallback by remember { mutableStateOf<android.webkit.WebChromeClient.CustomViewCallback?>(null) }
     
     // Sync URL text from tab changes, but ONLY if not expanded (not typing)
     LaunchedEffect(tab?.url, isPillExpanded) {
@@ -110,11 +114,17 @@ fun AddressBarWithWebView(
     
     // Download confirmation states
     var showDownloadWarning by remember { mutableStateOf(false) }
+
+    val vtApiKey by viewModel.virusTotalApiKey.collectAsStateWithLifecycle(initialValue = "")
+    val koodousApiKey by viewModel.koodousApiKey.collectAsStateWithLifecycle(initialValue = "")
     var pendingDownloadInfo by remember { mutableStateOf<com.jusdots.jusbrowse.security.DownloadValidator.DownloadValidationResult?>(null) }
     var pendingDownloadUrl by remember { mutableStateOf("") }
     
     var showTrackerDetails by remember { mutableStateOf(false) }
     val trackers = if (tab != null) viewModel.blockedTrackers[tab.id] ?: emptyList() else emptyList()
+
+    val multiMediaPlaybackEnabled by viewModel.multiMediaPlaybackEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val isBoomerMode by viewModel.isBoomerMode.collectAsStateWithLifecycle()
 
 
     
@@ -324,6 +334,8 @@ fun AddressBarWithWebView(
                                  settings.safeBrowsingEnabled = true
                                  settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                                  CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
+                                 
+                                 settings.mediaPlaybackRequiresUserGesture = !multiMediaPlaybackEnabled
 
                                  if (tab.isPrivate) {
                                      settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
@@ -377,7 +389,7 @@ fun AddressBarWithWebView(
                                           val script = com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript(
                                               defaultEnabled = defaultEngineEnabled,
                                               jusFakeEnabled = jusFakeEnabled,
-                                              randomiserEnabled = randomiserEnabled
+                                              boringEnabled = boringEnabled
                                           )
                                           view?.evaluateJavascript(script, null)
 
@@ -396,9 +408,15 @@ fun AddressBarWithWebView(
                                           val script = com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript(
                                               defaultEnabled = defaultEngineEnabled,
                                               jusFakeEnabled = jusFakeEnabled,
-                                              randomiserEnabled = randomiserEnabled
+                                              boringEnabled = boringEnabled
                                           )
                                           view?.evaluateJavascript(script, null)
+
+                                          if (viewModel.isBoomerMode.value) {
+                                              view?.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.ENABLE_BOOMER_MODE_SCRIPT, null)
+                                          } else {
+                                              view?.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.DISABLE_BOOMER_MODE_SCRIPT, null)
+                                          }
 
                                           viewModel.updateTabLoadingState(tabIndex, false)
                                           view?.title?.let { viewModel.updateTabTitle(tabIndex, it) }
@@ -407,7 +425,15 @@ fun AddressBarWithWebView(
                                  }
 
                                      webChromeClient = com.jusdots.jusbrowse.security.SecureWebChromeClient(
-                                         onPermissionRequest = { /* Handle permission requests */ }
+                                         onPermissionRequest = { /* Handle permission requests */ },
+                                         onShowCustomViewCallback = { view, callback ->
+                                             fullscreenView = view
+                                             fullscreenCallback = callback
+                                         },
+                                         onHideCustomViewCallback = {
+                                             fullscreenView = null
+                                             fullscreenCallback = null
+                                         }
                                      ).apply {
                                          onShowFileChooser = { _, callback, params ->
                                              if (params == null) {
@@ -455,6 +481,12 @@ fun AddressBarWithWebView(
                          }
                      },
                      update = { webView ->
+                         // Handle Boomer Mode Toggle Dynamically
+                         if (isBoomerMode) {
+                             webView.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.ENABLE_BOOMER_MODE_SCRIPT, null)
+                         } else {
+                             webView.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.DISABLE_BOOMER_MODE_SCRIPT, null)
+                         }
                          // Lifecycle management: resume when active
                          webView.onResume()
                          
@@ -483,7 +515,9 @@ fun AddressBarWithWebView(
                      },
                      onRelease = { webView ->
                          // Layer 14: Pausing background activity without clearing state
-                         webView.onPause()
+                         if (!multiMediaPlaybackEnabled) {
+                             webView.onPause()
+                         }
                      }
                  )
              }
@@ -828,13 +862,37 @@ fun AddressBarWithWebView(
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            viewModel.startDownload(context, pendingDownloadUrl, pendingDownloadInfo!!.fileName)
-                            showDownloadWarning = false
+                    Column(horizontalAlignment = Alignment.End) {
+                        Button(
+                            onClick = {
+                                pendingDownloadUrl?.let { url ->
+                                    viewModel.startDownload(context, url, pendingDownloadInfo!!.fileName)
+                                }
+                                showDownloadWarning = false
+                            }
+                        ) {
+                            Text("Download")
                         }
-                    ) {
-                        Text("Download")
+                        if (vtApiKey.isNotBlank()) {
+                            TextButton(onClick = { 
+                                pendingDownloadUrl?.let { url ->
+                                    viewModel.scanFile(url, "VirusTotal", context)
+                                }
+                                showDownloadWarning = false 
+                            }) {
+                                Text("Scan with VirusTotal")
+                            }
+                        }
+                        if (koodousApiKey.isNotBlank()) {
+                            TextButton(onClick = { 
+                                pendingDownloadUrl?.let { url ->
+                                    viewModel.scanFile(url, "Koodous", context)
+                                }
+                                showDownloadWarning = false 
+                            }) {
+                                Text("Scan with Koodous")
+                            }
+                        }
                     }
                 },
                 dismissButton = {
@@ -984,7 +1042,8 @@ fun AddressBarWithWebView(
                                     Triple(Icons.Default.Download, "Downloads") { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.DOWNLOADS); showPillMenu = false },
                                     Triple(Icons.Default.VpnKey, "Private") { viewModel.createNewTab(isPrivate = true); showPillMenu = false },
                                     Triple(Icons.Default.Layers, "Container") { showContainers = true },
-                                    Triple(Icons.Default.Settings, "Settings") { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.SETTINGS); showPillMenu = false }
+                                    Triple(Icons.Default.Settings, "Settings") { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.SETTINGS); showPillMenu = false },
+                                    Triple(Icons.Default.Warning, "Boomer") { viewModel.toggleBoomerMode(); showPillMenu = false }
                                 )
 
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1016,14 +1075,18 @@ fun AddressBarWithWebView(
                                                 ) {
                                                     Surface(
                                                         shape = CircleShape,
-                                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                                        color = if (item.second == "Boomer" && viewModel.isBoomerMode.collectAsState().value) 
+                                                                    MaterialTheme.colorScheme.errorContainer 
+                                                                else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                                                         modifier = Modifier.size(48.dp)
                                                     ) {
                                                         Box(contentAlignment = Alignment.Center) {
                                                             Icon(
                                                                 item.first,
                                                                 null,
-                                                                tint = MaterialTheme.colorScheme.primary,
+                                                                tint = if (item.second == "Boomer" && viewModel.isBoomerMode.collectAsState().value) 
+                                                                           MaterialTheme.colorScheme.error 
+                                                                       else MaterialTheme.colorScheme.primary,
                                                                 modifier = Modifier.size(24.dp)
                                                             )
                                                         }
@@ -1135,6 +1198,46 @@ fun AddressBarWithWebView(
                 }
                 Spacer(modifier = Modifier.height(32.dp))
             }
+        }
+
+        // Fullscreen overlay
+        if (fullscreenView != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                AndroidView(
+                    factory = { fullscreenView!! },
+                    modifier = Modifier.fillMaxSize()
+                )
+                
+                IconButton(
+                    onClick = {
+                        fullscreenCallback?.onCustomViewHidden()
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Exit Fullscreen", tint = Color.White)
+                }
+            }
+        }
+
+        // Scan Result Dialog
+        if (viewModel.showScanResultDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.showScanResultDialog = false },
+                title = { Text("Scan Result") },
+                text = { Text(viewModel.scanResultMessage) },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.showScanResultDialog = false }) {
+                        Text("OK")
+                    }
+                }
+            )
         }
     }
 }

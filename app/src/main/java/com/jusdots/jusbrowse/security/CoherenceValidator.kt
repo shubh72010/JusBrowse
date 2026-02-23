@@ -121,19 +121,10 @@ object CoherenceValidator {
             if (persona.ramGB < 6) {
                 warnings.add("Suspicious: Flagship device with less than 6GB RAM")
             }
-            if (persona.audioBaseLatency > 0.015) {
-                warnings.add("Suspicious: Flagship device with high audio latency")
-            }
-            if (persona.webglMaxTextureSize < 8192) {
-                warnings.add("Suspicious: Flagship device with low WebGL texture size")
-            }
         } else {
             // Budget tier
             if (persona.ramGB > 8) {
                 warnings.add("Suspicious: Budget device with more than 8GB RAM")
-            }
-            if (persona.audioBaseLatency < 0.010) {
-                warnings.add("Suspicious: Budget device with flagship-tier audio latency")
             }
         }
 
@@ -154,13 +145,7 @@ object CoherenceValidator {
             warnings.add("Note: Timezone '$tzContinent' with locale '$localeCountry' is unusual")
         }
 
-        // Rule 4: Network correlation
-        if (persona.networkType == "5g" && persona.networkDownlink < 10.0) {
-            warnings.add("Suspicious: 5G connection with low downlink speed")
-        }
-        if (persona.networkType == "3g" && persona.networkDownlink > 5.0) {
-            warnings.add("Suspicious: 3G connection with high downlink speed")
-        }
+
 
         return if (warnings.isEmpty()) ValidationResult.Pass else ValidationResult.Adm(warnings)
     }
