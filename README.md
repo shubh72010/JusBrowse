@@ -8,3 +8,17 @@ Also, I've looked at this https://github.com/fingerprintjs/fingerprintjs  and ho
 **once you see it, you can't unsee it.**
 
 so yeah, no giving up, motivation high and privacy to max 💪
+
+--------
+24/02/2026
+Update; from now on I'll be releasing the new updates as "Pre release" instead of "normal release" like 
+
+"v0.0.5-5 (Alpha 5.5)" 
+
+And, you may have noticed in the recent versions i use letters like:
+
+"v0.0.5-5b" the letter naming are for "Hotfixes"
+
+And the Final release will be like:
+
+"v0.0.6 (Alpha 6)"
