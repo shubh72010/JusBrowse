@@ -13,16 +13,12 @@ object DownloadValidator {
      * Dangerous file extensions that should be blocked or warned about
      */
     private val dangerousExtensions = setOf(
-        // Android (Allowed now, but still careful)
-        "dex",
-        // Executables
-        "exe", "msi", "bat", "cmd", "com", "scr", "pif",
-        // Scripts
-        "sh", "bash", "ps1", "vbs", "js", "jse", "wsf", "wsh",
-        // Archives that can contain executables
-        "jar", "war",
+        "exe", "msi", "bat", "cmd", "sh", "ps1", "vbs",
+        "jar", "dex", "py", "pl", "rb",
         // Other
-        "dll", "sys", "drv", "bin"
+        "dll", "sys", "drv", "bin",
+        // Apps (Gated by scan now)
+        "apk", "aab"
     )
 
     /**
@@ -31,8 +27,7 @@ object DownloadValidator {
     private val warnExtensions = setOf(
         "zip", "rar", "7z", "tar", "gz",
         "iso", "img", "dmg",
-        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
-        "apk", "aab"
+        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"
     )
 
     data class DownloadValidationResult(

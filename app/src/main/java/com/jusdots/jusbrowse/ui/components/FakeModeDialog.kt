@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.jusdots.jusbrowse.security.FakePersona
 import com.jusdots.jusbrowse.security.PersonaPresets
+import com.jusdots.jusbrowse.security.PersonaRepository
 
 /**
  * Dialog for enabling Fake Mode with persona selection
@@ -134,23 +135,43 @@ fun FakeModeDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Preset Personas
+                val groups = PersonaRepository.GOLDEN_PROFILES.distinctBy { it.groupId }
+                
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .heightIn(max = 240.dp)
                 ) {
-                    items(PersonaPresets.ALL_GROUPS) { personaGroup ->
-                        PersonaOption(
-                            emoji = personaGroup.flagEmoji,
-                            name = personaGroup.groupId.replaceFirstChar { it.uppercase() },
-                            description = "Alternates Flagship/Budget",
-                            isSelected = selectedPersona?.groupId == personaGroup.groupId && !useRandom,
-                            onClick = {
-                                selectedPersona = personaGroup
-                                useRandom = false
+                    if (groups.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No brands discovered. (Profiles: ${PersonaRepository.GOLDEN_PROFILES.size})\nCheck assets/golden_profiles/",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center
+                                )
                             }
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    } else {
+                        items(groups) { personaGroup ->
+                            PersonaOption(
+                                emoji = personaGroup.flagEmoji,
+                                name = personaGroup.deviceManufacturer,
+                                description = "Alternates Flagship/Budget",
+                                isSelected = selectedPersona?.groupId == personaGroup.groupId && !useRandom,
+                                onClick = {
+                                    selectedPersona = personaGroup
+                                    useRandom = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                     }
                 }
 
@@ -160,18 +181,35 @@ fun FakeModeDialog(
                 if (selectedPersona != null && !useRandom) {
                     PersonaPreview(persona = selectedPersona!!)
                     Spacer(modifier = Modifier.height(16.dp))
+                } else if (useRandom) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text(
+                            text = "A random brand will be assigned each time you start a new browsing session.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(12.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
 
                 // Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Cancel")
+                        Text("Cancel", maxLines = 1)
                     }
 
                     Button(
@@ -184,15 +222,10 @@ fun FakeModeDialog(
                             onEnable(persona)
                         },
                         modifier = Modifier.weight(1f),
-                        enabled = useRandom || selectedPersona != null
+                        enabled = useRandom || selectedPersona != null,
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Masks,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Enable")
+                        Text("Enable", maxLines = 1)
                     }
                 }
             }

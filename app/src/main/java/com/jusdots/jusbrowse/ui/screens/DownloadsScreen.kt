@@ -150,6 +150,7 @@ fun DownloadListItem(
                     val statusColor = when(item.securityStatus) {
                         "Clean" -> MaterialTheme.colorScheme.primary
                         "Malicious" -> MaterialTheme.colorScheme.error
+                        "Unknown" -> Color(0xFFFFA500) // Orange for Unknown
                         "Scanning" -> MaterialTheme.colorScheme.tertiary
                         "Error" -> MaterialTheme.colorScheme.error
                         else -> MaterialTheme.colorScheme.onSurfaceVariant

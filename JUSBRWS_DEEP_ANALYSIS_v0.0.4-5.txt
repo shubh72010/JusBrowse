@@ -1,0 +1,80 @@
+JusBrowse (v0.0.4-5) - Detailed Technical Analysis
+===================================================
+
+This document provides a deep-dive analysis of the architecture, security, privacy, and feature implementations within JusBrowse.
+
+1. SECURITY (The Fortress)
+--------------------------
+JusBrowse employs a multi-layered security model designed to protect users from malicious content and tracking.
+
+A. Layer 1: Content Blocking
+- Implementation: `ContentBlocker.kt` & `DnsResolver.kt`
+- Mechanics: Uses a local HashSet for rapid domain matching against an ad-block list (`adblock_list.txt`).
+- CNAME Uncloaking: One of the few browsers to implement this. It detects trackers hiding behind first-party subdomains by performing out-of-band DNS resolution via DoH (DNS-over-HTTPS) to find the true destination domain.
+
+B. Layer 2: Secure Multi-Profile Containers
+- Implementation: `ContainerManager.kt`
+- Mechanics: Leverages the `androidx.webkit.ProfileStore` to create completely isolated browsing environments (Default, Work, Personal, Banking, Sandbox).
+- Isolation: Each container has its own cookie jar, LocalStorage, IndexedDB, and cache, preventing cross-site state leaks.
+
+C. Layer 3: Download & Malware Scanning (BYOK)
+- Implementation: `ApiScanner.kt`, `DownloadValidator.kt`, `SecurityIndicators.kt`
+- Mechanics: Integration with VirusTotal and Koodous APIs.
+- Execution: When a user initiates a download, the browser offers a "Scan before download" option. It downloads the file to a secure temporary cache, performs a multipart upload to the selected security API, and displays the threat report BEFORE moving the file to the user's storage.
+
+D. Layer 4: DNS-Over-HTTPS (DoH)
+- Implementation: `DnsResolver.kt`
+- Mechanics: Prevents ISP-level DNS hijacking/snooping by routing all internal resolution (like CNAME checks) through Google or a user-defined custom DoH provider.
+
+2. PRIVACY (The Ghost)
+----------------------
+Privacy in JusBrowse goes beyond "Incognito Mode." It focuses on Anti-Fingerprinting and Session Consistency.
+
+A. The "Boring Engine" (Head Tracking)
+- Implementation: `BoringEngine.kt`
+- Philosophy: Instead of randomizing values (which makes you look unique), it creates a "Stable, Boring" session-locked identity.
+- Mechanics:
+  - Multi-Pillar Drift: Using a `sessionSeed`, it applies sub-pixel drifts to `getBoundingClientRect`, `getComputedStyle`, and audio/canvas buffers.
+  - Stability: Within a single session, the "fingerprint" remains identical, preventing sites from detecting "jitter-based" protections. Across sessions, the seed changes, creating a new "Normal" person.
+  - API Occlusion: Completely disables high-entropy APIs that aren't commonly used but are great for fingerprinting (WebGPU, WebSpeech).
+
+B. Fake Personas & Persona Isolation
+- Implementation: `FakeModeManager.kt`, `PersonaRepository.kt`
+- Mechanics: Allows the user to adopt entirely different hardware/browser profiles (e.g., Pixel 8 Pro, iPhone 14, Desktop Chrome).
+- Enforcement: Switching personas triggers a "Nuclear Reset"—wiping all cookies and storage and restarting the app process to ensure no leakage between identities.
+
+C. Coherence Validation
+- Implementation: `CoherenceValidator.kt`
+- Mechanics: Monitors the generated fingerprint to ensure it makes sense. It checks if the claimed RAM, CPU Cores, and Network types correlate with the device model being spoofed.
+
+3. FEATURES (The Experience)
+----------------------------
+JusBrowse redefines the browsing experience with a freeform, window-based workspace.
+
+A. Freeform Workspace
+- Implementation: `FreeformWorkspace.kt`, `TabWindow.kt`
+- Mechanics: Moves away from standard tab lists. Each tab is a moveable, scalable "Window" on a virtual desktop.
+- Interactivity: Uses a custom `WindowState` system (X, Y, Z-Index) allowing for genuine multi-tasking and tiled browsing.
+
+B. Airlock Media Extraction
+- Implementation: `AirlockGallery.kt`, `MediaExtractor.kt` (JS), `AirlockVaultManager.kt`
+- Mechanics: A sophisticated media discovery tool. It injects JS to find all images, videos, and audio streams in a page.
+- Vaulting: Once discovered, media is "vauled" (moved to a secure, isolated folder) for viewing in the Airlock Viewer, allowing users to consume content without trackers on the original page seeing the interaction.
+
+C. Boomer Mode (DOM Destroyer)
+- Implementation: `BrowserViewModel.kt`, `TabWindow.kt`
+- Mechanics: Targeted ad/popup removal. By injecting selective event listeners, it allows users to tap on ANY element (popups, sticky banners, paywalls) to immediately set `display: none`, effectively "booming" them out of existence.
+
+D. Start Page Customization
+- Implementation: `SettingsScreen.kt`, `BrowserScreen.kt`
+- Mechanics: Users can set a custom Home URL, applies custom wallpapers and blur effects to the start page for a premium visual feel.
+
+4. TECHNICAL ARCHITECTURE SUMMARY
+----------------------------------
+- Frontend: Jetpack Compose (Modern, Reactive UI)
+- Navigation: Custom Screen-based state machine in `BrowserViewModel`
+- Persistence: DataStore (Preferences) and Room Database (Bookmarks, History, Downloads)
+- WebView Management: Pooled `WebView` instances with dynamic script injection for dynamic feature toggling (Boomer Mode, Privacy Engines).
+
+===================================================
+End of Analysis. Document Generated by Antigravity AI.

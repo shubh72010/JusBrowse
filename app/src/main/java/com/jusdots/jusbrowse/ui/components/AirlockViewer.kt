@@ -193,9 +193,29 @@ fun AirlockViewer(
 
 @Composable
 private fun ImageAirlock(url: String) {
+    val context = LocalContext.current
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     
+    // Decrypt on-the-fly
+    val imageData by produceState<ByteArray?>(initialValue = null, url) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val file = java.io.File(url)
+                val masterKey = com.jusdots.jusbrowse.security.EncryptionManager.getMasterKey(context)
+                val encryptedFile = androidx.security.crypto.EncryptedFile.Builder(
+                    context,
+                    file,
+                    masterKey,
+                    androidx.security.crypto.EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
+                ).build()
+                encryptedFile.openFileInput().use { it.readBytes() }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
     val state = rememberTransformableState { zoomChange, offsetChange, _ ->
         scale = (scale * zoomChange).coerceIn(1f, 5f)
         if (scale > 1f) {
@@ -205,7 +225,6 @@ private fun ImageAirlock(url: String) {
         }
     }
     
-    // Reset offset when scale returns to 1
     LaunchedEffect(scale) {
         if (scale <= 1f) {
             offset = Offset.Zero
@@ -221,22 +240,26 @@ private fun ImageAirlock(url: String) {
             ),
         contentAlignment = Alignment.Center
     ) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(url)
-                .crossfade(true)
-                .build(),
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    translationX = offset.x,
-                    translationY = offset.y
-                ),
-            contentScale = ContentScale.Fit
-        )
+        if (imageData != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(imageData)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    ),
+                contentScale = ContentScale.Fit
+            )
+        } else {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        }
     }
 }
 
@@ -251,28 +274,34 @@ private fun VideoAirlock(url: String) {
     var isMuted by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            val uri = if (url.startsWith("/")) {
-                Uri.fromFile(java.io.File(url))
-            } else {
-                Uri.parse(url)
-            }
-            setMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
-            prepare()
-            playWhenReady = true
+        val dataSourceFactory = com.jusdots.jusbrowse.security.EncryptedFileDataSource.Factory(context)
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(dataSourceFactory)
             
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    isBuffering = playbackState == Player.STATE_BUFFERING
-                    if (playbackState == Player.STATE_READY) {
-                        duration = this@apply.duration
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build().apply {
+                val uri = if (url.startsWith("/")) {
+                    Uri.fromFile(java.io.File(url))
+                } else {
+                    Uri.parse(url)
+                }
+                setMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
+                prepare()
+                playWhenReady = true
+                
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        isBuffering = playbackState == Player.STATE_BUFFERING
+                        if (playbackState == Player.STATE_READY) {
+                            duration = this@apply.duration
+                        }
                     }
-                }
-                override fun onIsPlayingChanged(playing: Boolean) {
-                    isPlaying = playing
-                }
-            })
-        }
+                    override fun onIsPlayingChanged(playing: Boolean) {
+                        isPlaying = playing
+                    }
+                })
+            }
     }
     
     LaunchedEffect(exoPlayer) {
@@ -408,21 +437,27 @@ private fun AudioAirlock(url: String) {
     var isMuted by remember { mutableStateOf(false) }
     
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            val uri = if (url.startsWith("/")) {
-                Uri.fromFile(java.io.File(url))
-            } else {
-                Uri.parse(url)
-            }
-            setMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
-            prepare()
-            addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_READY) duration = this@apply.duration
+        val dataSourceFactory = com.jusdots.jusbrowse.security.EncryptedFileDataSource.Factory(context)
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(dataSourceFactory)
+
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build().apply {
+                val uri = if (url.startsWith("/")) {
+                    Uri.fromFile(java.io.File(url))
+                } else {
+                    Uri.parse(url)
                 }
-                override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
-            })
-        }
+                setMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
+                prepare()
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_READY) duration = this@apply.duration
+                    }
+                    override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+                })
+            }
     }
     
     LaunchedEffect(exoPlayer) {

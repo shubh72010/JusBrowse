@@ -106,7 +106,6 @@ fun JusBrowse2Theme(
         colorScheme.copy(
             background = Color.Black,
             surface = Color.Black,
-            surfaceVariant = Color.Black,
             surfaceContainer = Color.Black,
             surfaceContainerLow = Color.Black,
             surfaceContainerLowest = Color.Black,

@@ -47,11 +47,6 @@ class DownloadReceiver(
                         
                         // Trigger Scan
                         performSecurityScan(downloadId, fileName, filePath)
-
-                        // AUTO-OPEN APK: "Just opens the app, no popup"
-                        if (fileName.lowercase().endsWith(".apk")) {
-                            installApk(context, filePath)
-                        }
                     }
                 }
             }

@@ -1,0 +1,3 @@
+- Current progress: Fixed FakeMode restart crash (coroutine→Handler.postDelayed), NPE crash, AMOLED theme lock, duplicate ViewModel, BuildConfig error.
+- Active constraints: Single ViewModel instance; safe-call persona access; AMOLED preserves surfaceVariant for UI visibility.
+- Immediate next step: Full build verification to confirm all fixes compile and function correctly.

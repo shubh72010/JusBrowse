@@ -6,13 +6,35 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import androidx.datastore.core.DataStoreFactory
+import com.jusdots.jusbrowse.security.EncryptedPreferenceSerializer
+import java.io.File
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "browser_preferences")
+object LocalDataStore {
+    private var instance: DataStore<Preferences>? = null
+
+    fun getInstance(context: Context): DataStore<Preferences> {
+        val appContext = context.applicationContext
+        return instance ?: synchronized(this) {
+            instance ?: DataStoreFactory.create(
+                serializer = EncryptedPreferenceSerializer,
+                produceFile = { File(appContext.filesDir, "datastore/encrypted_preferences.pb") },
+                migrations = listOf(
+                    androidx.datastore.preferences.SharedPreferencesMigration(
+                        context = appContext,
+                        sharedPreferencesName = "browser_preferences"
+                    )
+                )
+            ).also { instance = it }
+        }
+    }
+}
 
 class PreferencesRepository(private val context: Context) {
+    private val dataStore = LocalDataStore.getInstance(context)
     
     private object PreferenceKeys {
         val SEARCH_ENGINE = stringPreferencesKey("search_engine")
@@ -52,108 +74,124 @@ class PreferencesRepository(private val context: Context) {
         val BACKGROUND_PRESET = stringPreferencesKey("background_preset")
         val SAVED_STICKERS = stringPreferencesKey("saved_stickers")
         val STICKERS_ENABLED = booleanPreferencesKey("stickers_enabled")
+        val FORCE_DARK_MODE = booleanPreferencesKey("force_dark_mode")
+        val SETTINGS_VERSION = androidx.datastore.preferences.core.intPreferencesKey("settings_version")
     }
 
-    val searchEngine: Flow<String> = context.dataStore.data.map { preferences ->
+    val searchEngine: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.SEARCH_ENGINE] ?: "DuckDuckGo"
     }
 
-    val homePage: Flow<String> = context.dataStore.data.map { preferences ->
+    /**
+     * One-time migration for users upgrading from v0.0.4-5A.
+     * Syncs engine state from FakeModeManager if it was enabled before DataStore tracked it.
+     */
+    suspend fun migrateIfNeeded() {
+        val prefs = dataStore.data.first()
+        val version = prefs[PreferenceKeys.SETTINGS_VERSION] ?: 0
+        if (version < 1) {
+            // If FakeModeManager was active but DataStore didn't know, sync it
+            if (com.jusdots.jusbrowse.security.FakeModeManager.isEnabled.value) {
+                setActiveEngine(jusFake = true)
+            }
+            dataStore.edit { it[PreferenceKeys.SETTINGS_VERSION] = 1 }
+        }
+    }
+
+    val homePage: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.HOME_PAGE] ?: "about:blank"
     }
 
-    val javascriptEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val javascriptEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.JAVASCRIPT_ENABLED] ?: true
     }
 
-    val darkMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val darkMode: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.DARK_MODE] ?: true
     }
 
-
-
-    val savedTabs: Flow<String?> = context.dataStore.data.map { preferences ->
+    val savedTabs: Flow<String?> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.SAVED_TABS]
     }
 
-    val savedWindowStates: Flow<String?> = context.dataStore.data.map { preferences ->
+    val savedWindowStates: Flow<String?> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.SAVED_WINDOW_STATES]
     }
 
-    val activeTabIndex: Flow<Int> = context.dataStore.data.map { preferences ->
+    val activeTabIndex: Flow<Int> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.ACTIVE_TAB_INDEX]?.toIntOrNull() ?: 0
     }
 
-    val adBlockEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val adBlockEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.AD_BLOCK_ENABLED] ?: true
     }
 
-    val httpsOnly: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val httpsOnly: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.HTTPS_ONLY] ?: false
     }
 
-    val flagSecureEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val flagSecureEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.FLAG_SECURE_ENABLED] ?: true
     }
 
-    val doNotTrackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val doNotTrackEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.DO_NOT_TRACK_ENABLED] ?: false
     }
 
-    val cookieBlockerEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val cookieBlockerEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.COOKIE_BLOCKER_ENABLED] ?: false
     }
 
-    val popupBlockerEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val popupBlockerEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.POPUP_BLOCKER_ENABLED] ?: true
     }
 
-    val showTabIcons: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val showTabIcons: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.SHOW_TAB_ICONS] ?: false
     }
 
-    val themePreset: Flow<String> = context.dataStore.data.map { preferences ->
+    val themePreset: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.THEME_PRESET] ?: "SYSTEM"
     }
 
-    val virusTotalApiKey: Flow<String> = context.dataStore.data.map { preferences ->
+    val virusTotalApiKey: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.VIRUSTOTAL_API_KEY] ?: ""
     }
 
-    val koodousApiKey: Flow<String> = context.dataStore.data.map { preferences ->
+    val koodousApiKey: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.KOODOUS_API_KEY] ?: ""
     }
 
-    val customDohUrl: Flow<String> = context.dataStore.data.map { preferences ->
+    val customDohUrl: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.CUSTOM_DOH_URL] ?: ""
     }
 
     suspend fun setSearchEngine(searchEngine: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.SEARCH_ENGINE] = searchEngine
         }
     }
 
     suspend fun setHomePage(homePage: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.HOME_PAGE] = homePage
         }
     }
 
     suspend fun setJavascriptEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.JAVASCRIPT_ENABLED] = enabled
         }
     }
 
     suspend fun setDarkMode(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.DARK_MODE] = enabled
         }
     }
 
     suspend fun saveSession(tabsJson: String, windowStatesJson: String, activeIndex: Int) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.SAVED_TABS] = tabsJson
             preferences[PreferenceKeys.SAVED_WINDOW_STATES] = windowStatesJson
             preferences[PreferenceKeys.ACTIVE_TAB_INDEX] = activeIndex.toString()
@@ -161,145 +199,145 @@ class PreferencesRepository(private val context: Context) {
     }
 
     suspend fun setAdBlockEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.AD_BLOCK_ENABLED] = enabled
         }
     }
 
     suspend fun setHttpsOnly(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.HTTPS_ONLY] = enabled
         }
     }
 
     suspend fun setFlagSecureEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.FLAG_SECURE_ENABLED] = enabled
         }
     }
 
     suspend fun setDoNotTrackEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.DO_NOT_TRACK_ENABLED] = enabled
         }
     }
 
-    val savedShortcuts: Flow<String?> = context.dataStore.data.map { preferences ->
+    val savedShortcuts: Flow<String?> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.SAVED_SHORTCUTS]
     }
 
     suspend fun saveShortcuts(shortcutsJson: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.SAVED_SHORTCUTS] = shortcutsJson
         }
     }
 
     suspend fun setCookieBlockerEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.COOKIE_BLOCKER_ENABLED] = enabled
         }
     }
 
     suspend fun setPopupBlockerEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.POPUP_BLOCKER_ENABLED] = enabled
         }
     }
 
     suspend fun setShowTabIcons(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.SHOW_TAB_ICONS] = enabled
         }
     }
 
     suspend fun setThemePreset(preset: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.THEME_PRESET] = preset
         }
     }
 
     suspend fun setVirusTotalApiKey(key: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.VIRUSTOTAL_API_KEY] = key
         }
     }
 
     suspend fun setKoodousApiKey(key: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.KOODOUS_API_KEY] = key
         }
     }
 
     suspend fun setCustomDohUrl(url: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.CUSTOM_DOH_URL] = url
         }
     }
 
     // ============ NEW UI CUSTOMIZATION PREFERENCES ============
 
-    val follianMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val follianMode: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.FOLLIAN_MODE] ?: false
     }
 
-    val toolbarPosition: Flow<String> = context.dataStore.data.map { preferences ->
+    val toolbarPosition: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.TOOLBAR_POSITION] ?: "TOP"
     }
 
-    val compactMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val compactMode: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.COMPACT_MODE] ?: false
     }
 
-    val addressBarStyle: Flow<String> = context.dataStore.data.map { preferences ->
+    val addressBarStyle: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.ADDRESS_BAR_STYLE] ?: "ROUNDED"
     }
 
     suspend fun setFollianMode(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.FOLLIAN_MODE] = enabled
         }
     }
 
     suspend fun setToolbarPosition(position: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.TOOLBAR_POSITION] = position
         }
     }
 
     suspend fun setCompactMode(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.COMPACT_MODE] = enabled
         }
     }
 
     suspend fun setAddressBarStyle(style: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.ADDRESS_BAR_STYLE] = style
         }
     }
 
-    val amoledBlackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val amoledBlackEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.AMOLED_BLACK_ENABLED] ?: false
     }
 
 
     suspend fun setAmoledBlackEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.AMOLED_BLACK_ENABLED] = enabled
         }
     }
 
 
-    val startPageWallpaperUri: Flow<String?> = context.dataStore.data.map { preferences ->
+    val startPageWallpaperUri: Flow<String?> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.START_PAGE_WALLPAPER_URI]
     }
 
-    val startPageBlurAmount: Flow<Float> = context.dataStore.data.map { preferences ->
+    val startPageBlurAmount: Flow<Float> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.START_PAGE_BLUR_AMOUNT]?.toFloat() ?: 0f
     }
 
     suspend fun setStartPageWallpaperUri(uri: String?) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             if (uri != null) {
                 preferences[PreferenceKeys.START_PAGE_WALLPAPER_URI] = uri
             } else {
@@ -309,89 +347,91 @@ class PreferencesRepository(private val context: Context) {
     }
 
     suspend fun setStartPageBlurAmount(amount: Float) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.START_PAGE_BLUR_AMOUNT] = amount.toString()
         }
     }
 
     // Engines
-    val defaultEngineEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val defaultEngineEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.DEFAULT_ENGINE_ENABLED] ?: true
     }
 
-    val jusFakeEngineEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val jusFakeEngineEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.JUS_FAKE_ENGINE_ENABLED] ?: false
     }
 
-    val boringEngineEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val boringEngineEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.BORING_ENGINE_ENABLED] ?: false
     }
 
-    val multiMediaPlaybackEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val multiMediaPlaybackEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.MULTI_MEDIA_PLAYBACK_ENABLED] ?: false
     }
 
-    val appFont: Flow<String> = context.dataStore.data.map { preferences ->
+    val appFont: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.APP_FONT] ?: "SYSTEM"
     }
 
-    val backgroundPreset: Flow<String> = context.dataStore.data.map { preferences ->
+    val backgroundPreset: Flow<String> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.BACKGROUND_PRESET] ?: "NONE"
     }
 
-    suspend fun setDefaultEngineEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[PreferenceKeys.DEFAULT_ENGINE_ENABLED] = enabled
+    suspend fun setActiveEngine(default: Boolean = false, jusFake: Boolean = false, boring: Boolean = false) {
+        dataStore.edit { preferences ->
+            preferences[PreferenceKeys.DEFAULT_ENGINE_ENABLED] = default
+            preferences[PreferenceKeys.JUS_FAKE_ENGINE_ENABLED] = jusFake
+            preferences[PreferenceKeys.BORING_ENGINE_ENABLED] = boring
         }
     }
 
-    suspend fun setJusFakeEngineEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[PreferenceKeys.JUS_FAKE_ENGINE_ENABLED] = enabled
-        }
-    }
 
-    suspend fun setBoringEngineEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[PreferenceKeys.BORING_ENGINE_ENABLED] = enabled
-        }
-    }
 
     suspend fun setMultiMediaPlaybackEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.MULTI_MEDIA_PLAYBACK_ENABLED] = enabled
         }
     }
 
     suspend fun setAppFont(font: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.APP_FONT] = font
         }
     }
 
     suspend fun setBackgroundPreset(preset: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.BACKGROUND_PRESET] = preset
         }
     }
 
-    val stickers: Flow<String?> = context.dataStore.data.map { preferences ->
+    val stickers: Flow<String?> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.SAVED_STICKERS]
     }
 
     suspend fun saveStickers(stickersJson: String) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.SAVED_STICKERS] = stickersJson
         }
     }
 
-    val stickersEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+    val stickersEnabled: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[PreferenceKeys.STICKERS_ENABLED] ?: true
     }
 
     suspend fun setStickersEnabled(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferenceKeys.STICKERS_ENABLED] = enabled
+        }
+    }
+
+    val forceDarkMode: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[PreferenceKeys.FORCE_DARK_MODE] ?: false
+    }
+
+    suspend fun setForceDarkMode(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferenceKeys.FORCE_DARK_MODE] = enabled
         }
     }
 }

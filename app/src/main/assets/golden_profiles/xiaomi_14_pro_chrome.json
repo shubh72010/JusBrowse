@@ -1,0 +1,49 @@
+{
+    "id": "xiaomi_14_pro_chrome",
+    "displayName": "Xiaomi 14 Pro (Flagship)",
+    "manufacturer": "Xiaomi",
+    "userAgent": "Mozilla/5.0 (Linux; Android 14; 23116PN5BC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    "brands": [
+        {
+            "brand": "Not_A Brand",
+            "version": "8"
+        },
+        {
+            "brand": "Chromium",
+            "version": "120"
+        },
+        {
+            "brand": "Google Chrome",
+            "version": "120"
+        }
+    ],
+    "platform": "Android",
+    "platformString": "Linux aarch64",
+    "platformVersion": "14.0.0",
+    "model": "23116PN5BC",
+    "mobile": true,
+    "screenWidth": 1572,
+    "screenHeight": 3408,
+    "pixelRatio": 4.0,
+    "cpuCores": 8,
+    "ramGB": 16,
+    "videoCardRenderer": "Adreno (TM) 750",
+    "videoCardVendor": "Qualcomm",
+    "locale": "zh-CN",
+    "languages": [
+        "zh-CN",
+        "zh",
+        "en-US",
+        "en"
+    ],
+    "timezone": "Asia/Shanghai",
+    "groupId": "xiaomi",
+    "flagEmoji": "📱",
+    "isFlagship": true,
+    "headers": {
+        "Sec-CH-UA": "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"",
+        "Sec-CH-UA-Mobile": "?1",
+        "Sec-CH-UA-Platform": "\"Android\"",
+        "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+}

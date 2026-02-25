@@ -79,7 +79,7 @@ object SecurityScanner {
                     ScanResult("Clean", "No threats detected by VirusTotal")
                 }
             } else if (connection.responseCode == 404) {
-                ScanResult("Clean", "File not seen before on VirusTotal (Unknown)")
+                ScanResult("Unknown", "File not seen before on VirusTotal")
             } else {
                 ScanResult("Error", "VirusTotal API Error: ${connection.responseCode}")
             }
@@ -111,7 +111,7 @@ object SecurityScanner {
                     ScanResult("Clean", "Koodous: No known issues with this APK")
                 }
             } else if (connection.responseCode == 404) {
-                ScanResult("Clean", "Koodous: APK not in database (Unknown)")
+                ScanResult("Unknown", "APK not in database (Unknown)")
             } else {
                 ScanResult("Error", "Koodous API Error: ${connection.responseCode}")
             }

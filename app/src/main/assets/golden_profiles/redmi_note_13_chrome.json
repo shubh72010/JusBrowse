@@ -1,0 +1,47 @@
+{
+    "id": "redmi_note_13_chrome",
+    "displayName": "Redmi Note 13 (Budget)",
+    "manufacturer": "Xiaomi",
+    "userAgent": "Mozilla/5.0 (Linux; Android 13; 23124RA7EO) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+    "brands": [
+        {
+            "brand": "Not_A Brand",
+            "version": "8"
+        },
+        {
+            "brand": "Chromium",
+            "version": "120"
+        },
+        {
+            "brand": "Google Chrome",
+            "version": "120"
+        }
+    ],
+    "platform": "Android",
+    "platformString": "Linux aarch64",
+    "platformVersion": "13.0.0",
+    "model": "23124RA7EO",
+    "mobile": true,
+    "screenWidth": 1080,
+    "screenHeight": 2400,
+    "pixelRatio": 3.0,
+    "cpuCores": 8,
+    "ramGB": 6,
+    "videoCardRenderer": "Mali-G57",
+    "videoCardVendor": "ARM",
+    "locale": "en-US",
+    "languages": [
+        "en-US",
+        "en"
+    ],
+    "timezone": "Asia/Kolkata",
+    "groupId": "xiaomi",
+    "flagEmoji": "📱",
+    "isFlagship": false,
+    "headers": {
+        "Sec-CH-UA": "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\", \"Google Chrome\";v=\"120\"",
+        "Sec-CH-UA-Mobile": "?1",
+        "Sec-CH-UA-Platform": "\"Android\"",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
+}

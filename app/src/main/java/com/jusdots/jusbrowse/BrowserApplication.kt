@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.jusdots.jusbrowse.data.database.BrowserDatabase
 
 class BrowserApplication : Application() {
+    val applicationScope = kotlinx.coroutines.MainScope()
     
     companion object {
         @Volatile
@@ -24,7 +25,9 @@ class BrowserApplication : Application() {
                 context,
                 BrowserDatabase::class.java,
                 dbName
-            ).fallbackToDestructiveMigration().build()
+            )
+            .fallbackToDestructiveMigration()
+            .build()
         }
     }
 

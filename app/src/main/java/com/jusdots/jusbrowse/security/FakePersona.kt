@@ -6,73 +6,86 @@ package com.jusdots.jusbrowse.security
  * This version uses "Golden Profiles" - verified combinations of UA/Headers/Screen
  * to ensure consistency across the stack.
  */
+import com.google.gson.annotations.SerializedName
+
+/**
+ * Represents a complete fake digital identity/persona.
+ * 
+ * Version 2: Golden Profiles
+ * Verified combinations of UA/Headers/Screen/Hardware to ensure 
+ * cross-signal consistency.
+ */
 data class FakePersona(
-    val id: String,
-    val displayName: String,
-    val flagEmoji: String,
+    @SerializedName("id") val id: String,
+    @SerializedName("displayName") val displayName: String,
+    @SerializedName("flagEmoji") val flagEmoji: String = "👤",
+    @SerializedName("version") val version: Int = 1,
 
     // Core Identity
-    val userAgent: String,
-    // Client Hints (Sec-CH-UA-*)
-    val brands: List<BrandVersion>,
-    val platform: String,
-    val platformString: String, // e.g. "Linux aarch64" or "iPhone"
-    val platformVersion: String,
-    val model: String,
-    val mobile: Boolean,
+    @SerializedName("userAgent") val userAgent: String,
     
-    // HTTP Headers (Accept-Language, etc)
-    val headers: Map<String, String>,
+    // Client Hints (Sec-CH-UA-*)
+    @SerializedName("brands") val brands: List<BrandVersion>,
+    @SerializedName("platform") val platform: String,
+    @SerializedName("platformString") val platformString: String, // e.g. "Linux aarch64"
+    @SerializedName("platformVersion") val platformVersion: String,
+    @SerializedName("model") val model: String,
+    @SerializedName("mobile") val mobile: Boolean,
+    
+    // HTTP Headers
+    @SerializedName("headers") val headers: Map<String, String>,
 
-    // Screen Metrics (Viewport)
-    val screenWidth: Int,
-    val screenHeight: Int,
-    val pixelRatio: Double, // devicePixelRatio
+    // Screen Metrics
+    @SerializedName("screenWidth") val screenWidth: Int,
+    @SerializedName("screenHeight") val screenHeight: Int,
+    @SerializedName("pixelRatio") val pixelRatio: Double,
 
-    // Hardware
-    val cpuCores: Int,
-    val ramGB: Int,
-    val videoCardRenderer: String, // WebGL UNMASKED_RENDERER
-    val videoCardVendor: String,   // WebGL UNMASKED_VENDOR
+    // Hardware Specs
+    @SerializedName("cpuCores") val cpuCores: Int,
+    @SerializedName("ramGB") val ramGB: Int,
+    @SerializedName("videoCardRenderer") val videoCardRenderer: String,
+    @SerializedName("videoCardVendor") val videoCardVendor: String,
+    @SerializedName("hasWebGpu") val hasWebGpu: Boolean = false,
+    @SerializedName("shaderPrecision") val shaderPrecision: Int = 23, // Default for most ARM
+    @SerializedName("maxDescriptorSampledImages") val maxDescriptorSampledImages: Int = 16, // Default for Mali
+    @SerializedName("ja4PartC") val ja4PartC: String? = null,
+    @SerializedName("quicParameters") val quicParameters: Map<String, String>? = null,
 
-    // Fingerprinting Noise
-    val noiseSeed: Long, // Persistent seed for canvas/audio noise
+    // Fingerprinting Noise Bases
+    @SerializedName("noiseSeed") val noiseSeed: Long = System.currentTimeMillis(),
 
     // Locale & Time
-    val locale: String,    // navigator.language (e.g., "en-US")
-    val languages: List<String>, // navigator.languages
-    val timezone: String,  // Intl.DateTimeFormat (e.g., "America/New_York")
-    val doNotTrack: String = "1", // navigator.doNotTrack
+    @SerializedName("locale") val locale: String,
+    @SerializedName("languages") val languages: List<String>,
+    @SerializedName("timezone") val timezone: String,
+    @SerializedName("doNotTrack") val doNotTrack: String = "1",
 
-
-
-
-
-
-    // Inner Profile Support
-    val groupId: String = "generic",
-    val isFlagship: Boolean = true
+    // Organization
+    @SerializedName("groupId") val groupId: String = "generic",
+    @SerializedName("isFlagship") val isFlagship: Boolean = true,
+    @SerializedName("manufacturer") val manufacturer: String = "Generic"
 ) {
     // Helper properties for UI compatibility
     val deviceModel: String get() = model
-    val deviceManufacturer: String get() = model.split(" ").firstOrNull() ?: "Generic"
+    val deviceManufacturer: String get() = if (manufacturer != "Generic") manufacturer else (model.split(" ").firstOrNull() ?: "Generic")
     val androidVersionName: String get() = platformVersion
     val dpi: Int get() = (pixelRatio * 160).toInt()
     
     val browserName: String get() = brands.find { !it.brand.contains("Not") }?.brand ?: "Chrome"
-    val browserVersion: String get() = brands.find { !it.brand.contains("Not") }?.version ?: "0.0"
+    val browserVersion: String get() = brands.find { !it.brand.contains("Not") }?.version ?: "120.0"
     
     val countryCode: String get() = locale.split("-").lastOrNull() ?: "US"
 
-    data class BrandVersion(val brand: String, val version: String)
+    data class BrandVersion(
+        @SerializedName("brand") val brand: String,
+        @SerializedName("version") val version: String
+    )
 
-    /**
-     * Helper to generate the Sec-CH-UA header value
-     * Example: "Chromium";v="120", "Google Chrome";v="120", "Not-A.Brand";v="99"
-     */
     fun getSecChUaHeader(): String {
-        return brands.joinToString(", ") {
-            "\"${it.brand}\";v=\"${it.version}\""
-        }
+        return brands
+            .filter { !it.brand.contains("Android WebView", ignoreCase = true) }
+            .joinToString(", ") {
+                "\"${it.brand}\";v=\"${it.version.split(".").firstOrNull() ?: it.version}\""
+            }
     }
 }

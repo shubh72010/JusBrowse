@@ -1,0 +1,8 @@
+Non-authoritative answer:
+Server:  familyshield.sse.cisco.com
+Address:  208.67.222.123
+
+Name:    pornhub.com
+Addresses:  ::ffff:146.112.61.106
+	  146.112.61.106
+

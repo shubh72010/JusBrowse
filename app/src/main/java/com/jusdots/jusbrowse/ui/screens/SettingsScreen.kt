@@ -76,15 +76,15 @@ fun SettingsScreen(
     val appFont by viewModel.appFont.collectAsStateWithLifecycle(initialValue = "SYSTEM")
     val stickers = viewModel.stickers
     val wallColorExtracted by viewModel.extractedWallColor.collectAsStateWithLifecycle()
+    val forceDarkMode by viewModel.forceDarkMode.collectAsStateWithLifecycle(initialValue = false)
 
-    // Engines
-    val defaultEngineEnabled by viewModel.defaultEngineEnabled.collectAsStateWithLifecycle(initialValue = true)
-    val jusFakeEngineEnabled by viewModel.jusFakeEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val boringEngineEnabled by viewModel.boringEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+    // activeEngine is consolidated engine choice
+    val activeEngine by viewModel.activeEngine.collectAsStateWithLifecycle()
     val multiMediaPlaybackEnabled by viewModel.multiMediaPlaybackEnabled.collectAsStateWithLifecycle(initialValue = false)
     
     // Fake Mode state
     val fakeModeEnabled by FakeModeManager.isEnabled.collectAsStateWithLifecycle()
+    
     val currentPersona by FakeModeManager.currentPersona.collectAsStateWithLifecycle()
     var showFakeModeDialog by remember { mutableStateOf(false) }
 
@@ -93,6 +93,14 @@ fun SettingsScreen(
     
     // Context for FakeModeManager (App Restart)
     val context = androidx.compose.ui.platform.LocalContext.current
+    
+    val versionName = remember(context) {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0.0.4"
+        } catch (e: Exception) {
+            "0.0.4"
+        }
+    }
     
     // Fake Mode Dialog
     if (showFakeModeDialog) {
@@ -104,6 +112,7 @@ fun SettingsScreen(
             }
         )
     }
+
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -132,6 +141,7 @@ fun SettingsScreen(
                     .clip(RoundedCornerShape(24.dp))
                     .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                    .imePadding()
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -525,11 +535,12 @@ fun SettingsScreen(
                 modifier = Modifier.padding(top = 8.dp)
             )
 
-            SettingsSwitch(
+
+            SettingsEngineItem(
                 title = "Default Engine",
                 subtitle = "Standard JusBrowse fingerprinting protection",
-                checked = defaultEngineEnabled,
-                onCheckedChange = { viewModel.setDefaultEngineEnabled(it) }
+                selected = activeEngine == com.jusdots.jusbrowse.ui.viewmodel.EngineMode.DEFAULT,
+                onClick = { viewModel.setDefaultEngineEnabled(context) }
             )
 
             // 🎭 JusFake Engine Card (replaces old Fake Mode card)
@@ -537,18 +548,21 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        if (jusFakeEngineEnabled) {
-                            viewModel.setJusFakeEngineEnabled(false)
+                        if (activeEngine == com.jusdots.jusbrowse.ui.viewmodel.EngineMode.JUS_FAKE) {
+                            viewModel.deactivateJusFakeEngine(context)
                         } else {
                             showFakeModeDialog = true
                         }
                     },
                 colors = CardDefaults.cardColors(
-                    containerColor = if (jusFakeEngineEnabled) 
+                    containerColor = if (activeEngine == com.jusdots.jusbrowse.ui.viewmodel.EngineMode.JUS_FAKE) 
                         Color(0xFF7C4DFF).copy(alpha = 0.1f) 
                     else 
                         MaterialTheme.colorScheme.surfaceVariant
-                )
+                ),
+                border = if (activeEngine == com.jusdots.jusbrowse.ui.viewmodel.EngineMode.JUS_FAKE) 
+                    androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF7C4DFF)) 
+                else null
             ) {
                 Row(
                     modifier = Modifier
@@ -562,7 +576,7 @@ fun SettingsScreen(
                             .size(48.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
-                                if (jusFakeEngineEnabled) Color(0xFF7C4DFF) 
+                                if (activeEngine == com.jusdots.jusbrowse.ui.viewmodel.EngineMode.JUS_FAKE) Color(0xFF7C4DFF) 
                                 else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                             ),
                         contentAlignment = Alignment.Center
@@ -578,12 +592,14 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium
                         )
-                        if (jusFakeEngineEnabled && currentPersona != null) {
-                            Text(
-                                text = "${currentPersona!!.flagEmoji} ${currentPersona!!.displayName}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFF7C4DFF)
-                            )
+                        if (activeEngine == com.jusdots.jusbrowse.ui.viewmodel.EngineMode.JUS_FAKE) {
+                            currentPersona?.let { persona ->
+                                Text(
+                                    text = "${persona.flagEmoji} ${persona.displayName}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFF7C4DFF)
+                                )
+                            }
                         } else {
                             Text(
                                 text = "Priv8 + RLEngine (Persona Based)",
@@ -593,24 +609,20 @@ fun SettingsScreen(
                         }
                     }
                     
-                    Switch(
-                        checked = jusFakeEngineEnabled,
-                        onCheckedChange = {
-                            if (it) {
-                                showFakeModeDialog = true
-                            } else {
-                                viewModel.setJusFakeEngineEnabled(false)
-                            }
-                        }
+                    RadioButton(
+                        selected = activeEngine == com.jusdots.jusbrowse.ui.viewmodel.EngineMode.JUS_FAKE,
+                        onClick = null, // Handled by Card clickable
+                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF7C4DFF))
                     )
                 }
             }
 
-            SettingsSwitch(
+
+            SettingsEngineItem(
                 title = "Boring Engine",
                 subtitle = "Boring. Stable. Forgettable. (Session-Locked)",
-                checked = boringEngineEnabled,
-                onCheckedChange = { viewModel.setBoringEngineEnabled(it) }
+                selected = activeEngine == com.jusdots.jusbrowse.ui.viewmodel.EngineMode.BORING,
+                onClick = { viewModel.setBoringEngineEnabled(context) }
             )
 
             SettingsSwitch(
@@ -675,6 +687,13 @@ fun SettingsScreen(
                 subtitle = "⚠️ Hard JavaScript kill - sites WILL break",
                 checked = follianMode,
                 onCheckedChange = { viewModel.setFollianMode(it) }
+            )
+
+            SettingsSwitch(
+                title = "Force Dark Mode",
+                subtitle = "Enforce dark mode on all websites (Dark Mode Enforcer)",
+                checked = forceDarkMode,
+                onCheckedChange = { viewModel.setForceDarkMode(it) }
             )
 
             HorizontalDivider()
@@ -812,9 +831,10 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            var vtText by remember(vtApiKey) { mutableStateOf(vtApiKey) }
             OutlinedTextField(
-                value = vtApiKey,
-                onValueChange = { viewModel.setVirusTotalApiKey(it) },
+                value = vtText,
+                onValueChange = { vtText = it; viewModel.setVirusTotalApiKey(it) },
                 label = { Text("VirusTotal API Key") },
                 placeholder = { Text("Enter your VT key") },
                 modifier = Modifier.fillMaxWidth(),
@@ -822,9 +842,10 @@ fun SettingsScreen(
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
             )
 
+            var koodousText by remember(koodousApiKey) { mutableStateOf(koodousApiKey) }
             OutlinedTextField(
-                value = koodousApiKey,
-                onValueChange = { viewModel.setKoodousApiKey(it) },
+                value = koodousText,
+                onValueChange = { koodousText = it; viewModel.setKoodousApiKey(it) },
                 label = { Text("Koodous API Key") },
                 placeholder = { Text("Enter your Koodous key") },
                 modifier = Modifier.fillMaxWidth(),
@@ -832,18 +853,159 @@ fun SettingsScreen(
                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
             )
 
-            OutlinedTextField(
-                value = customDohUrl,
-                onValueChange = { viewModel.setCustomDohUrl(it) },
-                label = { Text("Custom DNS over HTTPS (DoH) URL") },
-                placeholder = { Text("https://cloudflare-dns.com/dns-query") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                supportingText = { Text("Leave empty for default (Google DoH). Note: Must support JSON formatting.") }
-            )
+            var dohText by remember(customDohUrl) { mutableStateOf(customDohUrl) }
+            var dnsSuggestions by remember { mutableStateOf(emptyList<com.jusdots.jusbrowse.data.models.DnsProvider>()) }
+            var showDnsDropdown by remember { mutableStateOf(false) }
+
+            ExposedDropdownMenuBox(
+                expanded = showDnsDropdown,
+                onExpandedChange = { showDnsDropdown = it }
+            ) {
+                OutlinedTextField(
+                    value = dohText,
+                    onValueChange = { 
+                        dohText = it
+                        val matches = com.jusdots.jusbrowse.data.models.DnsPresets.findBestMatches(it)
+                        dnsSuggestions = matches
+                        showDnsDropdown = matches.isNotEmpty() && (!matches.any { m -> m.dohUrl == it } || it.isEmpty())
+                        viewModel.setCustomDohUrl(it)
+                    },
+                    label = { Text("Custom DNS over HTTPS (DoH) URL") },
+                    placeholder = { Text("Search (e.g. 'family' or '1.1.1.1')") },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    singleLine = true,
+                    supportingText = { Text("Type to search presets or enter custom URL") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showDnsDropdown) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                )
+
+                if (dnsSuggestions.isNotEmpty()) {
+                    ExposedDropdownMenu(
+                        expanded = showDnsDropdown,
+                        onDismissRequest = { showDnsDropdown = false },
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)
+                    ) {
+                        dnsSuggestions.forEach { preset ->
+                            DropdownMenuItem(
+                                text = { 
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(preset.name, fontWeight = FontWeight.Bold)
+                                            Spacer(Modifier.width(8.dp))
+                                            Surface(
+                                                color = if (preset.isFamilyFilter) Color(0xFF4CAF50).copy(alpha = 0.2f) else if (preset.isMalwareFilter) Color(0xFF2196F3).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(preset.type, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp), color = if (preset.isFamilyFilter) Color(0xFF388E3C) else if (preset.isMalwareFilter) Color(0xFF1976D2) else MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                        Text("${preset.primaryIp} • ${preset.description}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                },
+                                onClick = {
+                                    dohText = preset.dohUrl
+                                    viewModel.setCustomDohUrl(preset.dohUrl)
+                                    showDnsDropdown = false
+                                }
+                            )
+                        }
+                    }
+            }
+        }
+
+            // ── Made by JusDots ──
+            Spacer(modifier = Modifier.height(24.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        width = 1.dp,
+                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF7C4DFF),
+                                Color(0xFF448AFF),
+                                Color(0xFF7C4DFF)
+                            )
+                        ),
+                        shape = RoundedCornerShape(20.dp)
+                    ),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "JusBrowse",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Made with ❤\uFE0F by JusDots",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF7C4DFF).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = "v$versionName",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color(0xFF7C4DFF),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
+}
+
+@Composable
+fun SettingsEngineItem(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else Color.Transparent,
+        border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            RadioButton(
+                selected = selected,
+                onClick = null // Handled by Surface
+            )
+        }
+    }
 }
 
 @Composable
@@ -964,13 +1126,6 @@ private fun BackgroundPresetCard(
                 modifier = Modifier.fillMaxSize()
             )
             
-            // Transparent overlay to capture clicks (WebView steals them otherwise)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable(onClick = onClick)
-            )
-
             if (isSelected) {
                 Icon(
                     imageVector = Icons.Default.Check,

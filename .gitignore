@@ -1,15 +1,32 @@
+# Gradle
+.gradle/
+build/
+/app/build/
+/build/
+
+# Android Studio
 *.iml
-.gradle
+.idea/
+!.idea/codeStyles/
+!.idea/copyright/
+!.idea/inspectionProfiles/
+!.idea/iconloader.xml
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Gradle Signing
+*.jks
+*.keystore
+
+# System
 .DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+Thumbs.db
+
+# Temporary agent logs
+*_out.txt
+*_check.txt
+*_debug.txt
+*_verify.txt
+*.log

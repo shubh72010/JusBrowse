@@ -41,7 +41,14 @@ import kotlinx.coroutines.*
 import java.util.UUID
 import android.content.Context
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import com.jusdots.jusbrowse.security.FakeModeManager
+
+enum class EngineMode {
+    DEFAULT,
+    JUS_FAKE,
+    BORING
+}
 
 data class WindowState(
     var x: Float = 0f,
@@ -76,6 +83,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     // WebView Pool to keep instances alive (LinkedHashMap for LRU-ish order)
     private val webViewPool = LinkedHashMap<String, WebView>(10, 0.75f, true)
+    
+    // Layer 13: Debounced Session Persistence to avoid I/O thrashing
+    private var sessionSaveJob: kotlinx.coroutines.Job? = null
+    
+    fun scheduleSessionSave() {
+        sessionSaveJob?.cancel()
+        sessionSaveJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(2000) // Wait 2s before committing
+            saveSessionNow()
+        }
+    }
 
     // Bookmarks, History & Downloads
     val bookmarks = bookmarkRepository.getAllBookmarks()
@@ -117,9 +135,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val customDohUrl: StateFlow<String> = preferencesRepository.customDohUrl.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, "")
     
     // Engines
-    val defaultEngineEnabled = preferencesRepository.defaultEngineEnabled
-    val jusFakeEngineEnabled = preferencesRepository.jusFakeEngineEnabled
-    val boringEngineEnabled = preferencesRepository.boringEngineEnabled
+    val activeEngine: StateFlow<EngineMode> = kotlinx.coroutines.flow.combine(
+        preferencesRepository.defaultEngineEnabled,
+        preferencesRepository.jusFakeEngineEnabled,
+        preferencesRepository.boringEngineEnabled
+    ) { default, jusFake, boring ->
+        when {
+            jusFake -> EngineMode.JUS_FAKE
+            boring -> EngineMode.BORING
+            else -> EngineMode.DEFAULT
+        }
+    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, EngineMode.DEFAULT)
+
     val multiMediaPlaybackEnabled = preferencesRepository.multiMediaPlaybackEnabled
     val appFont = preferencesRepository.appFont
 
@@ -138,6 +165,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     val stickersEnabled = preferencesRepository.stickersEnabled
+    val forceDarkMode = preferencesRepository.forceDarkMode
 
 
 
@@ -299,6 +327,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         viewModelScope.launch {
+            preferencesRepository.migrateIfNeeded()
             loadSession()
             // Sync timezone with network for airtight spoofing
             com.jusdots.jusbrowse.security.FakeModeManager.syncTimezoneWithNetwork(this)
@@ -324,12 +353,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     private val gson = Gson()
 
-    private fun saveSession() {
-        viewModelScope.launch {
-            val tabsJson = gson.toJson(tabs.toList())
-            val windowStatesJson = gson.toJson(tabWindowStates.toMap())
-            preferencesRepository.saveSession(tabsJson, windowStatesJson, _activeTabIndex.value)
-        }
+    suspend fun saveSessionNow() {
+        val tabsJson = gson.toJson(tabs.toList())
+        val windowStatesJson = gson.toJson(tabWindowStates.toMap())
+        preferencesRepository.saveSession(tabsJson, windowStatesJson, _activeTabIndex.value)
     }
 
     private suspend fun loadSession() {
@@ -365,11 +392,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     _currentUrl.value = sanitizedTabs[activeIdx].url
                 }
                 
-                // Add others with delay
+                // Add others with delay - Layer 13: Slow down to 800ms for resource breathing
                 viewModelScope.launch {
                     sanitizedTabs.forEachIndexed { index, tab ->
                         if (index != activeIdx) {
-                            kotlinx.coroutines.delay(300) // 300ms gap
+                            kotlinx.coroutines.delay(800) 
                             tabs.add(tab)
                         }
                     }
@@ -453,7 +480,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         tabWindowStates[tabId]?.let {
             it.x = x
             it.y = y
-            saveSession()
+            scheduleSessionSave()
         }
     }
 
@@ -461,7 +488,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         tabWindowStates[tabId]?.let {
             // Clamp scale
             it.scale = scale.coerceIn(0.5f, 3.0f)
-            saveSession()
+            scheduleSessionSave()
         }
     }
 
@@ -498,7 +525,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             _activeTabIndex.value = tabs.lastIndex
             _currentUrl.value = url
         }
-        saveSession()
+        scheduleSessionSave()
     }
 
     fun switchTab(index: Int) {
@@ -543,7 +570,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             if (_activeTabIndex.value in tabs.indices) {
                 _currentUrl.value = tabs[_activeTabIndex.value].url
             }
-            saveSession()
+            scheduleSessionSave()
         } else if (tabs.size == 1) {
             // If closing last tab, create a new one
             val oldTabId = tabs[0].id
@@ -558,7 +585,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             )
             tabWindowStates[newId] = WindowState()
             _currentUrl.value = "about:blank"
-            saveSession()
+            scheduleSessionSave()
         }
     }
 
@@ -573,7 +600,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         
         // Re-initialize with one fresh tab
         createNewTab()
-        saveSession()
+        scheduleSessionSave()
     }
 
     fun updateTab(index: Int, updatedTab: BrowserTab) {
@@ -582,7 +609,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             if (index == _activeTabIndex.value) {
                 _currentUrl.value = updatedTab.url
             }
-            saveSession()
+            scheduleSessionSave()
+        }
+    }
+
+    fun updateTabUrl(tabId: String, url: String) {
+        val index = tabs.indexOfFirst { it.id == tabId }
+        if (index != -1) {
+            tabs[index] = tabs[index].copy(url = url)
+            if (index == _activeTabIndex.value) {
+                _currentUrl.value = url
+            }
+            scheduleSessionSave()
         }
     }
 
@@ -624,9 +662,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun updateTabTitle(index: Int, title: String) {
         if (index in tabs.indices) {
-            val updatedTab = tabs[index].copy(title = title)
-            updateTab(index, updatedTab)
+            tabs[index] = tabs[index].copy(title = title)
         }
+        scheduleSessionSave()
     }
 
     fun updateTabLoadingState(index: Int, isLoading: Boolean, progress: Float = 0f) {
@@ -641,11 +679,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun updateTabNavigationState(index: Int, canGoBack: Boolean, canGoForward: Boolean) {
         if (index in tabs.indices) {
-            val updatedTab = tabs[index].copy(
-                canGoBack = canGoBack,
-                canGoForward = canGoForward
-            )
-            updateTab(index, updatedTab)
+            tabs[index] = tabs[index].copy(canGoBack = canGoBack, canGoForward = canGoForward)
+            scheduleSessionSave()
         }
     }
 
@@ -688,10 +723,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun getSearchUrl(query: String, engine: String = "DuckDuckGo"): String {
         val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        val currentDoh = customDohUrl.value
+        val isFamilyDns = com.jusdots.jusbrowse.data.models.DnsPresets.providers.any { it.dohUrl == currentDoh && it.isFamilyFilter }
+
         return when (engine.lowercase()) {
-            "google" -> "https://www.google.com/search?q=$encodedQuery"
-            "bing" -> "https://www.bing.com/search?q=$encodedQuery"
-            else -> "https://duckduckgo.com/?q=$encodedQuery"
+            "google" -> "https://www.google.com/search?q=$encodedQuery${if (isFamilyDns) "&safe=active" else ""}"
+            "bing" -> "https://www.bing.com/search?q=$encodedQuery${if (isFamilyDns) "&adlt=strict" else ""}"
+            else -> "https://duckduckgo.com/?q=$encodedQuery${if (isFamilyDns) "&kp=-2" else ""}" // kp=-2 is DuckDuckGo Strict
         }
     }
 
@@ -790,6 +828,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 // Ignore errors
             }
+        }
+    }
+
+    fun setForceDarkMode(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setForceDarkMode(enabled)
         }
     }
 
@@ -941,55 +985,56 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // Engines
-    fun setDefaultEngineEnabled(enabled: Boolean) {
+    fun setDefaultEngineEnabled(context: android.content.Context) {
         viewModelScope.launch {
-            if (enabled) {
-                preferencesRepository.setDefaultEngineEnabled(true)
-                preferencesRepository.setBoringEngineEnabled(false)
-                preferencesRepository.setJusFakeEngineEnabled(false)
-            } else {
-                preferencesRepository.setDefaultEngineEnabled(false)
-            }
-        }
-    }
-
-    fun setJusFakeEngineEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            if (enabled) {
-                // If enabling, we don't do it here anymore, we use activateJusFakeEngine from UI
-                // to handle the restart/context correctly. 
-                // However, for consistency, we update preferences.
-                preferencesRepository.setJusFakeEngineEnabled(true)
-                preferencesRepository.setBoringEngineEnabled(false)
-                preferencesRepository.setDefaultEngineEnabled(false)
-            } else {
-                preferencesRepository.setJusFakeEngineEnabled(false)
+            // Step 1: Commit engine choice to DataStore
+            preferencesRepository.setActiveEngine(default = true)
+            
+            // Step 2: If we were in Fake Mode, we must restart to clear the process state
+            if (com.jusdots.jusbrowse.security.FakeModeManager.isEnabled.value) {
+                com.jusdots.jusbrowse.security.FakeModeManager.disableFakeMode(context) {
+                    saveSessionNow()
+                }
             }
         }
     }
 
     fun activateJusFakeEngine(context: android.content.Context, persona: com.jusdots.jusbrowse.security.FakePersona) {
         viewModelScope.launch {
-            // 1. Save preferences FIRST and Wait
-            preferencesRepository.setJusFakeEngineEnabled(true)
-            preferencesRepository.setBoringEngineEnabled(false)
-            preferencesRepository.setDefaultEngineEnabled(false)
+            // 1. Save preferences FIRST and Wait (Atomic)
+            preferencesRepository.setActiveEngine(jusFake = true)
             
-            // 2. Important: Sync other states if needed
-            
-            // 3. Trigger the restart through FakeModeManager
-            com.jusdots.jusbrowse.security.FakeModeManager.enableFakeMode(context, persona)
+            // 2. Trigger the restart through FakeModeManager with session save
+            com.jusdots.jusbrowse.security.FakeModeManager.enableFakeMode(context, persona) {
+                saveSessionNow()
+            }
         }
     }
 
-    fun setBoringEngineEnabled(enabled: Boolean) {
+    fun deactivateJusFakeEngine(context: android.content.Context) {
         viewModelScope.launch {
-            if (enabled) {
-                preferencesRepository.setBoringEngineEnabled(true)
-                preferencesRepository.setDefaultEngineEnabled(false)
-                preferencesRepository.setJusFakeEngineEnabled(false)
+            // Explicitly set Default Engine active
+            preferencesRepository.setActiveEngine(default = true)
+            
+            com.jusdots.jusbrowse.security.FakeModeManager.disableFakeMode(context) {
+                saveSessionNow()
+            }
+        }
+    }
+
+    fun setBoringEngineEnabled(context: android.content.Context) {
+        viewModelScope.launch {
+            // Step 1: Commit engine choice to DataStore
+            preferencesRepository.setActiveEngine(boring = true)
+            
+            // Step 2: Restart if transitioning from a different protected state
+            if (com.jusdots.jusbrowse.security.FakeModeManager.isEnabled.value) {
+                com.jusdots.jusbrowse.security.FakeModeManager.disableFakeMode(context) {
+                    saveSessionNow()
+                }
             } else {
-                preferencesRepository.setBoringEngineEnabled(false)
+                // Restart anyway to ensure session lock is fresh and clean
+                com.jusdots.jusbrowse.security.FakeModeManager.restartApp(context)
             }
         }
     }
@@ -1188,6 +1233,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun toggleThirdPartyCookies(tabIndex: Int) {
+        if (tabIndex in tabs.indices) {
+            val tab = tabs[tabIndex]
+            tabs[tabIndex] = tab.copy(acceptThirdPartyCookies = !tab.acceptThirdPartyCookies)
+            scheduleSessionSave()
+        }
+    }
+
     companion object {
         const val ENABLE_BOOMER_MODE_SCRIPT = """
             (function() {
@@ -1248,6 +1301,53 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 document.removeEventListener('mouseover', window.__boomerMouseOver, true);
                 document.removeEventListener('mouseout', window.__boomerMouseOut, true);
                 document.removeEventListener('click', window.__boomerClick, true);
+            })();
+        """
+
+        const val SAFE_SEARCH_SCRIPT = """
+            (function() {
+                var forceSafe = function() {
+                    var url = new URL(window.location.href);
+                    var host = url.hostname.toLowerCase();
+                    var changed = false;
+
+                    if (host.indexOf('google.') !== -1) {
+                        if (url.searchParams.get('safe') !== 'active') {
+                            url.searchParams.set('safe', 'active');
+                            changed = true;
+                        }
+                    } else if (host.indexOf('bing.com') !== -1) {
+                        if (url.searchParams.get('adlt') !== 'strict') {
+                            url.searchParams.set('adlt', 'strict');
+                            changed = true;
+                        }
+                    } else if (host.indexOf('duckduckgo.com') !== -1) {
+                        if (url.searchParams.get('kp') !== '-2') {
+                            url.searchParams.set('kp', '-2');
+                            changed = true;
+                        }
+                    }
+
+                    if (changed) {
+                        window.location.replace(url.toString());
+                    }
+                };
+
+                // Check on load
+                forceSafe();
+
+                // Intercept SPA navigation
+                var _pushState = history.pushState;
+                history.pushState = function() {
+                    _pushState.apply(history, arguments);
+                    forceSafe();
+                };
+                var _replaceState = history.replaceState;
+                history.replaceState = function() {
+                    _replaceState.apply(history, arguments);
+                    forceSafe();
+                };
+                window.addEventListener('popstate', forceSafe);
             })();
         """
     }

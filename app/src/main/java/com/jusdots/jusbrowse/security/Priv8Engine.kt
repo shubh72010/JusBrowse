@@ -47,7 +47,7 @@ object Priv8Engine {
 
         // Time: Round to nearest hour or similar, and add precision rounding (100ms)
         flattenedData[PrivacyPacket.KEY_TIMEZONE] = "UTC"
-        flattenedData[PrivacyPacket.KEY_TIME_PRECISION_MS] = 100 
+        flattenedData[PrivacyPacket.KEY_TIME_PRECISION_MS] = 20 
 
         // Hardware: Baseline values (RLE will override these with Persona-specific values)
         flattenedData[PrivacyPacket.KEY_HARDWARE_CONCURRENCY] = 4
@@ -59,9 +59,18 @@ object Priv8Engine {
         flattenedData[PrivacyPacket.KEY_USER_AGENT] = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36"
         flattenedData[PrivacyPacket.KEY_LANGUAGE] = "en-US"
 
-        return PrivacyPacket(
-            state = PrivacyState.FLATTENED,
-            data = flattenedData
-        )
+        // Resulting State
+        val state = PrivacyState.FLATTENED
+        
+        // --- HARDENED NORMALIZATION (Apply even to non-persona packets) ---
+        // Ensure high-precision timers are always rounded if they leak through
+        val rawTime = packet.timestamp
+        flattenedData[PrivacyPacket.KEY_TIME_PRECISION_MS] = 20 // Record that we're using 20ms precision
+        
+        // Default Hardware Baseline
+        flattenedData[PrivacyPacket.KEY_HARDWARE_CONCURRENCY] = 8
+        flattenedData[PrivacyPacket.KEY_DEVICE_MEMORY] = 8
+        
+        return PrivacyPacket(state, flattenedData, (rawTime / 20) * 20)
     }
 }

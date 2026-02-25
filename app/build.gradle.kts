@@ -15,7 +15,7 @@ android {
         minSdk = 26 // Security: Kills ancient WebView exploits, enables modern APIs
         targetSdk = 36
         versionCode = 1
-        versionName = "0.0.4-5"
+        versionName = "0.0.4-7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -62,13 +62,16 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.sqlite.ktx)
     
     // WebView
     implementation(libs.accompanist.webview)
     implementation(libs.androidx.webkit)
     
+    
     // DataStore
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.security.crypto)
     
     // ViewModel
     implementation(libs.androidx.lifecycle.viewmodel.compose)

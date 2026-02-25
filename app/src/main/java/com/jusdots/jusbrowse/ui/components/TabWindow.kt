@@ -97,9 +97,7 @@ fun TabWindow(
     val currentPersona by FakeModeManager.currentPersona.collectAsStateWithLifecycle()
 
     // Engines
-    val defaultEngineEnabled by viewModel.defaultEngineEnabled.collectAsStateWithLifecycle(initialValue = true)
-    val jusFakeEnabled by viewModel.jusFakeEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val boringEnabled by viewModel.boringEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val activeEngine by viewModel.activeEngine.collectAsStateWithLifecycle()
     
     // Fake Mode dialogs
     var showFakeModeDialog by remember { mutableStateOf(false) }
@@ -200,9 +198,8 @@ fun TabWindow(
         FakeModeDialog(
             onDismiss = { showFakeModeDialog = false },
             onEnable = { persona ->
-                FakeModeManager.enableFakeMode(context, persona)
+                viewModel.activateJusFakeEngine(context, persona)
                 showFakeModeDialog = false
-                viewModel.getWebView(tab.id)?.reload()
             }
         )
     }
@@ -213,9 +210,8 @@ fun TabWindow(
             persona = currentPersona!!,
             onDismiss = { showPersonaDetails = false },
             onDisable = {
-                FakeModeManager.disableFakeMode(context)
+                viewModel.deactivateJusFakeEngine(context)
                 showPersonaDetails = false
-                viewModel.getWebView(tab.id)?.reload()
             }
         )
     }
@@ -567,7 +563,7 @@ fun TabWindow(
                                     settings.saveFormData = false
                                     settings.setGeolocationEnabled(false)
                                     
-                                    if (boringEnabled) {
+                                    if (activeEngine == com.jusdots.jusbrowse.ui.viewmodel.EngineMode.BORING) {
                                         settings.userAgentString = BoringEngine.CHROME_145_UA
                                         if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
                                             WebSettingsCompat.setUserAgentMetadata(settings, BoringEngine.getUserAgentMetadata())
@@ -626,6 +622,10 @@ fun TabWindow(
                                             if (adBlockEnabled && viewModel.contentBlocker.shouldBlockFast(url)) {
                                                 return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
                                             }
+                                            
+                                            // Strip X-Requested-With Header
+                                            // Handled via WebSettingsCompat allow-list suppression
+                                            
                                             return super.shouldInterceptRequest(view, request)
                                         }
 
@@ -652,7 +652,10 @@ fun TabWindow(
                                             viewModel.updateTabLoadingState(tabIndex, false)
                                             view?.title?.let { viewModel.updateTabTitle(tabIndex, it) }
                                             viewModel.updateTabNavigationState(tabIndex, view?.canGoBack() == true, view?.canGoForward() == true)
-                                            val fingerprintScript = FakeModeManager.generateFingerprintScript(defaultEnabled = defaultEngineEnabled, jusFakeEnabled = jusFakeEnabled, boringEnabled = boringEnabled)
+                                             val fingerprintScript = FakeModeManager.generateFingerprintScript(
+                                                 screenWidth = view?.width ?: 0,
+                                                 screenHeight = view?.height ?: 0
+                                             )
                                             view?.evaluateJavascript(fingerprintScript, null)
                                             if (cookieBlockerEnabled) {
                                                 view?.evaluateJavascript(com.jusdots.jusbrowse.security.CookieDialogBlocker.blockerScript, null)
@@ -693,9 +696,16 @@ fun TabWindow(
                                 if (webView.settings.textZoom != targetScale) {
                                     webView.settings.textZoom = targetScale
                                 }
+                                
+                                // Layer 13: Strict URL Comparison Guard to prevent loadUrl loops
                                 val normalizedTabUrl = tab.url.removeSuffix("/")
-                                val normalizedWebViewUrl = webView.url?.removeSuffix("/") ?: ""
-                                if (normalizedWebViewUrl != normalizedTabUrl && tab.url != "about:blank" && !tab.isLoading) {
+                                val currentWebViewUrl = webView.url?.removeSuffix("/") ?: ""
+                                
+                                val isSubstantiallyDifferent = normalizedTabUrl != currentWebViewUrl && 
+                                                               tab.url != "about:blank" && 
+                                                               !tab.isLoading
+                                
+                                if (isSubstantiallyDifferent) {
                                     val headers = mutableMapOf<String, String>()
                                     if (doNotTrackEnabled) headers["DNT"] = "1"
                                     webView.loadUrl(tab.url, headers)

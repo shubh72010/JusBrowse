@@ -98,6 +98,32 @@ object CoherenceValidator {
             }
         }
 
+        // Rule 7: GPU Architecture Invariants (Shader Precision / Descriptor Limits)
+        if (persona.videoCardVendor == "ARM") {
+            // Mali typically has 23-bit shader precision and lower descriptor limits
+            if (persona.shaderPrecision > 23) {
+                errors.add("CRITICAL: Mali GPU architecture cannot have > 23-bit shader precision")
+            }
+            if (persona.maxDescriptorSampledImages > 16) {
+                errors.add("CRITICAL: Mali GPU architecture limit: maxDescriptorSampledImages <= 16")
+            }
+        } else if (persona.videoCardVendor == "Qualcomm") {
+            // Adreno typically has higher descriptor limits (up to 128)
+            if (persona.maxDescriptorSampledImages < 16) {
+                errors.add("CRITICAL: Adreno GPU architecture should support at least 16 descriptors")
+            }
+        }
+
+        // Rule 8: Silicon Provenance (Pixel Case Study)
+        if (persona.model == "Pixel 8 Pro") {
+            if (!persona.videoCardRenderer.contains("Immortalis-G715")) {
+                errors.add("CRITICAL: Pixel 8 Pro must report Immortalis-G715 GPU")
+            }
+            if (persona.cpuCores != 9) { // Tensor G3 is 9-core (1+4+4)
+                errors.add("CRITICAL: Pixel 8 Pro (Tensor G3) must report 9 cores, got: ${persona.cpuCores}")
+            }
+        }
+
         return if (errors.isEmpty()) ValidationResult.Pass else ValidationResult.Void(errors)
     }
 

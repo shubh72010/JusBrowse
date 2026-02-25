@@ -14,5 +14,6 @@ data class BrowserTab(
     val canGoForward: Boolean = false,
     val favicon: String? = null,
     val isPrivate: Boolean = false,
-    val containerId: String = "default"
+    val containerId: String = "default",
+    val acceptThirdPartyCookies: Boolean = true
 ) : Parcelable

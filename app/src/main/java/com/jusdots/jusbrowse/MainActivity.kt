@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         // Ensure FakeModeManager state is loaded
-        com.jusdots.jusbrowse.security.FakeModeManager.init(this)
+        com.jusdots.jusbrowse.security.FakeModeManager.init(this, (application as BrowserApplication).applicationScope)
         
         // Initialize Download Security Receiver
         val database = BrowserApplication.database
@@ -49,17 +49,21 @@ class MainActivity : ComponentActivity() {
         
         enableEdgeToEdge()
         
-        viewModel = androidx.lifecycle.ViewModelProvider(this)[BrowserViewModel::class.java]
-        handleIntent(intent)
-        
         setContent {
-            val viewModel: BrowserViewModel = viewModel()
-            val themePreset by viewModel.themePreset.collectAsStateWithLifecycle(initialValue = "SYSTEM")
-            val darkMode by viewModel.darkMode.collectAsStateWithLifecycle(initialValue = true)
-            val amoledBlackEnabled by viewModel.amoledBlackEnabled.collectAsStateWithLifecycle(initialValue = false)
-            val wallColor by viewModel.extractedWallColor.collectAsStateWithLifecycle()
-            val appFont by viewModel.appFont.collectAsStateWithLifecycle(initialValue = "SYSTEM")
-            val backgroundPreset by viewModel.backgroundPreset.collectAsStateWithLifecycle(initialValue = "NONE")
+            val vm: BrowserViewModel = viewModel()
+            this@MainActivity.viewModel = vm
+            
+            // Handle launch intent
+            LaunchedEffect(Unit) {
+                intent?.data?.let { uri -> vm.handleIntentURL(uri.toString()) }
+            }
+            
+            val themePreset by vm.themePreset.collectAsStateWithLifecycle(initialValue = "SYSTEM")
+            val darkMode by vm.darkMode.collectAsStateWithLifecycle(initialValue = true)
+            val amoledBlackEnabled by vm.amoledBlackEnabled.collectAsStateWithLifecycle(initialValue = false)
+            val wallColor by vm.extractedWallColor.collectAsStateWithLifecycle()
+            val appFont by vm.appFont.collectAsStateWithLifecycle(initialValue = "SYSTEM")
+            val backgroundPreset by vm.backgroundPreset.collectAsStateWithLifecycle(initialValue = "NONE")
 
             JusBrowse2Theme(
                 darkTheme = darkMode,
@@ -73,7 +77,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val flagSecureEnabled by viewModel.flagSecureEnabled.collectAsStateWithLifecycle(initialValue = true)
+                    val flagSecureEnabled by vm.flagSecureEnabled.collectAsStateWithLifecycle(initialValue = true)
 
                     LaunchedEffect(flagSecureEnabled) {
                         if (flagSecureEnabled) {
@@ -83,7 +87,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    BrowserScreen(viewModel = viewModel)
+                    BrowserScreen(viewModel = vm)
                 }
             }
         }

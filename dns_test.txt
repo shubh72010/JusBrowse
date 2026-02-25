@@ -1,0 +1,7 @@
+Non-authoritative answer:
+Server:  family.adguard-dns.com
+Address:  94.140.14.15
+
+Name:    pornhub.com
+Address:  94.140.14.35
+

@@ -3,6 +3,11 @@ package com.jusdots.jusbrowse.ui.components
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.graphics.Bitmap
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,8 +58,6 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.google.gson.Gson
 import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.CookieManager
 import java.io.ByteArrayInputStream
 import android.content.ClipData
@@ -85,9 +88,7 @@ fun AddressBarWithWebView(
     val follianMode by viewModel.follianMode.collectAsStateWithLifecycle(initialValue = false)
     
     // Engines
-    val defaultEngineEnabled by viewModel.defaultEngineEnabled.collectAsStateWithLifecycle(initialValue = true)
-    val jusFakeEnabled by viewModel.jusFakeEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val boringEnabled by viewModel.boringEngineEnabled.collectAsStateWithLifecycle(initialValue = false)
+
     
     // PILL BAR STATES
     var isPillExpanded by remember { mutableStateOf(false) }
@@ -125,7 +126,8 @@ fun AddressBarWithWebView(
 
     val multiMediaPlaybackEnabled by viewModel.multiMediaPlaybackEnabled.collectAsStateWithLifecycle(initialValue = false)
     val isBoomerMode by viewModel.isBoomerMode.collectAsStateWithLifecycle()
-
+    val customDohUrl by viewModel.customDohUrl.collectAsStateWithLifecycle(initialValue = "")
+    val forceDarkMode by viewModel.forceDarkMode.collectAsStateWithLifecycle(initialValue = false)
 
     
     // Elastic Swipe State (Animatable for smooth physics)
@@ -298,88 +300,122 @@ fun AddressBarWithWebView(
             if (tab != null && tab.url != "about:blank") {
                  // Use AndroidView to bind to the specific WebView from pool
                  key(tab.id) {
-                     AndroidView(
-                         factory = { ctx ->
-                         // Check pool first, if null create new
-                         val existing = viewModel.getWebView(tab.id)
-                         if (existing != null) {
-                             (existing.parent as? ViewGroup)?.removeView(existing)
-                             existing
-                         } else {
-                             WebView(ctx).apply {
-                                 // State Partitioning: Apply isolated profile
-                                 com.jusdots.jusbrowse.security.ContainerManager.applyContainer(this, tab.containerId ?: "default")
-                                 
-                                 // Follian Mode - Hard JavaScript Kill
-                                 if (follianMode) {
-                                     com.jusdots.jusbrowse.security.FollianBlocker.applyToWebView(this)
-                                 } else {
-                                     settings.javaScriptEnabled = true
-                                 }
-                                 
-                                 settings.domStorageEnabled = true
-                                 addJavascriptInterface(com.jusdots.jusbrowse.security.FakeModeManager.PrivacyBridge(), "jusPrivacyBridge")
-                                 
-                                 setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
-                                     val validation = com.jusdots.jusbrowse.security.DownloadValidator.validateDownload(
-                                         url, userAgent, contentDisposition, mimeType, contentLength
-                                     )
-                                     
-                                     pendingDownloadUrl = url
-                                     pendingDownloadInfo = validation
-                                     showDownloadWarning = true
-                                 }
-                                 
-                                 // Security Hardening
-                                 settings.safeBrowsingEnabled = true
-                                 settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
-                                 
-                                 settings.mediaPlaybackRequiresUserGesture = !multiMediaPlaybackEnabled
+                      AndroidView<android.webkit.WebView>(
+                      factory = { ctx ->
+                          val existing = viewModel.getWebView(tab.id)
+                          if (existing != null) {
+                              (existing.parent as? ViewGroup)?.removeView(existing)
+                              existing
+                          } else {
+                              WebView(ctx).apply {
+                                  com.jusdots.jusbrowse.security.ContainerManager.applyContainer(this, tab.containerId ?: "default")
+                                  
+                                  if (follianMode) {
+                                      com.jusdots.jusbrowse.security.FollianBlocker.applyToWebView(this)
+                                  } else {
+                                      this.settings.javaScriptEnabled = true
+                                  }
+                                  
+                                  this.settings.domStorageEnabled = true
+                                  addJavascriptInterface(com.jusdots.jusbrowse.security.FakeModeManager.PrivacyBridge(), "jusPrivacyBridge")
+                                  
+                                  setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+                                      val validation = com.jusdots.jusbrowse.security.DownloadValidator.validateDownload(
+                                          url, userAgent, contentDisposition, mimeType, contentLength
+                                      )
+                                      pendingDownloadUrl = url
+                                      pendingDownloadInfo = validation
+                                      showDownloadWarning = true
+                                  }
+                                  
+                                  this.settings.safeBrowsingEnabled = true
+                                  this.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                                  CookieManager.getInstance().setAcceptThirdPartyCookies(this, tab.acceptThirdPartyCookies)
+                                  
+                                  this.settings.mediaPlaybackRequiresUserGesture = !multiMediaPlaybackEnabled
 
-                                 if (tab.isPrivate) {
-                                     settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
-                                 }
+                                  if (tab.isPrivate) {
+                                      this.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                                  }
 
-                                 setOnLongClickListener { v ->
-                                     val hitTest = (v as WebView).hitTestResult
-                                     if (hitTest.type == WebView.HitTestResult.IMAGE_TYPE || 
-                                         hitTest.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
-                                         
-                                         val url = hitTest.extra
-                                         if (url != null) {
-                                             val item = ClipData.Item(url)
-                                             val data = ClipData("Image", arrayOf("text/plain"), item)
-                                             val shadow = View.DragShadowBuilder(v)
-                                             
-                                             if (Build.VERSION.SDK_INT >= 24) {
-                                                 v.startDragAndDrop(data, shadow, null, 0)
-                                             } else {
-                                                 @Suppress("DEPRECATION")
-                                                 v.startDrag(data, shadow, null, 0)
-                                             }
-                                             isDragging = true
-                                             true
-                                         } else false
-                                     } else false
-                                 }
-                                 
-                                 webViewClient = object : WebViewClient() {
-                                     override fun shouldInterceptRequest(
-                                         view: WebView?,
-                                         request: WebResourceRequest?
-                                     ): WebResourceResponse? {
-                                         val url = request?.url?.toString() ?: return null
-                                         
-                                         // 1. Ad Blocking
-                                          if (adBlockEnabled && viewModel.contentBlocker.shouldBlockFast(url) { domain -> viewModel.recordBlockedTracker(tab.id, domain) }) {
+                                  if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                      if (forceDarkMode) {
+                                          this.settings.forceDark = android.webkit.WebSettings.FORCE_DARK_ON
+                                      } else {
+                                          this.settings.forceDark = android.webkit.WebSettings.FORCE_DARK_OFF
+                                      }
+                                  }
+
+                                  setOnLongClickListener { v ->
+                                      val hitTest = (v as WebView).hitTestResult
+                                      if (hitTest.type == WebView.HitTestResult.IMAGE_TYPE || 
+                                          hitTest.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
+                                          
+                                          val url = hitTest.extra
+                                          if (url != null) {
+                                              val item = ClipData.Item(url)
+                                              val data = ClipData("Image", arrayOf("text/plain"), item)
+                                              val shadow = View.DragShadowBuilder(v)
+                                              
+                                              if (android.os.Build.VERSION.SDK_INT >= 24) {
+                                                  v.startDragAndDrop(data, shadow, null, 0)
+                                              } else {
+                                                  @Suppress("DEPRECATION")
+                                                  v.startDrag(data, shadow, null, 0)
+                                              }
+                                              isDragging = true
+                                              true
+                                          } else false
+                                      } else false
+                                  }
+                                  
+                                  webViewClient = object : WebViewClient() {
+                                      override fun shouldInterceptRequest(
+                                          view: WebView?,
+                                          request: WebResourceRequest?
+                                      ): WebResourceResponse? {
+                                          val requestUrl = request?.url ?: return null
+                                          val urlString = requestUrl.toString()
+                                          val host = requestUrl.host?.lowercase() ?: ""
+                                          
+                                          if (customDohUrl.isNotBlank() && com.jusdots.jusbrowse.data.models.DnsPresets.providers.any { it.dohUrl == customDohUrl && it.isFamilyFilter }) {
+                                              val isSearchEngine = host.contains("google.") || host.contains("bing.com") || host.contains("duckduckgo.com")
+                                              
+                                              if (isSearchEngine && request.isForMainFrame) {
+                                                  val uri = request.url
+                                                  val (param, value) = when {
+                                                      host.contains("google.") -> "safe" to "active"
+                                                      host.contains("bing.com") -> "adlt" to "strict"
+                                                      host.contains("duckduckgo.com") -> "kp" to "-2"
+                                                      else -> "" to ""
+                                                  }
+                                                  
+                                                  if (param.isNotEmpty() && uri.getQueryParameter(param) != value) {
+                                                      val newUri = uri.buildUpon().appendQueryParameter(param, value).build()
+                                                      view?.post { view.loadUrl(newUri.toString()) }
+                                                      return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
+                                                  }
+                                              }
+                                          }
+                                          
+                                          if (customDohUrl.isNotBlank()) {
+                                               if (host.isNotBlank() && com.jusdots.jusbrowse.security.DnsResolver.isBlockedByCustomDns(host, customDohUrl)) {
+                                                   if (request.isForMainFrame) {
+                                                       return WebResourceResponse("text/html", "UTF-8", ByteArrayInputStream("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head><body style=\"background-color:#1E1E1E;color:white;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;\"><div style=\"text-align:center;\"><h1 style=\"color:#FF5252;\">No gooning bruh \uD83E\uDD26\u200D\u2642\uFE0F \uD83C\uDF46\uD83D\uDCA6\uD83D\uDEAB</h1><p>Blocked by your Family DNS Provider.</p></div></body></html>".toByteArray()))
+                                                   } else {
+                                                       return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
+                                                   }
+                                               }
+                                          }
+                                          
+                                          if (adBlockEnabled && viewModel.contentBlocker.shouldBlockFast(urlString) { domain -> viewModel.recordBlockedTracker(tab.id, domain) }) {
                                               return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
                                           }
-                                         
-                                         return super.shouldInterceptRequest(view, request)
-                                     }
+                                          
+                                          return super.shouldInterceptRequest(view, request)
+                                      }
 
-                                     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                      override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                           if (httpsOnly && url?.startsWith("http://") == true) {
                                               val httpsUrl = url.replaceFirst("http://", "https://")
                                               view?.post { view.loadUrl(httpsUrl) }
@@ -387,11 +423,13 @@ fun AddressBarWithWebView(
                                           }
                                           
                                           val script = com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript(
-                                              defaultEnabled = defaultEngineEnabled,
-                                              jusFakeEnabled = jusFakeEnabled,
-                                              boringEnabled = boringEnabled
+                                              screenWidth = view?.let { it.width } ?: 0,
+                                              screenHeight = view?.let { it.height } ?: 0
                                           )
                                           view?.evaluateJavascript(script, null)
+                                          if (customDohUrl.isNotBlank() && com.jusdots.jusbrowse.data.models.DnsPresets.providers.any { it.dohUrl == customDohUrl && it.isFamilyFilter }) {
+                                              view?.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.SAFE_SEARCH_SCRIPT, null)
+                                          }
 
                                           if (!tab.isPrivate) {
                                               view?.settings?.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
@@ -403,14 +441,17 @@ fun AddressBarWithWebView(
                                                   viewModel.navigateToUrlForIndex(tabIndex, it) 
                                               }
                                           }
-                                     }
-                                     override fun onPageFinished(view: WebView?, url: String?) {
+                                      }
+
+                                      override fun onPageFinished(view: WebView?, url: String?) {
                                           val script = com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript(
-                                              defaultEnabled = defaultEngineEnabled,
-                                              jusFakeEnabled = jusFakeEnabled,
-                                              boringEnabled = boringEnabled
+                                              screenWidth = view?.let { it.width } ?: 0,
+                                              screenHeight = view?.let { it.height } ?: 0
                                           )
                                           view?.evaluateJavascript(script, null)
+                                          if (customDohUrl.isNotBlank() && com.jusdots.jusbrowse.data.models.DnsPresets.providers.any { it.dohUrl == customDohUrl && it.isFamilyFilter }) {
+                                              view?.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.SAFE_SEARCH_SCRIPT, null)
+                                          }
 
                                           if (viewModel.isBoomerMode.value) {
                                               view?.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.ENABLE_BOOMER_MODE_SCRIPT, null)
@@ -421,105 +462,103 @@ fun AddressBarWithWebView(
                                           viewModel.updateTabLoadingState(tabIndex, false)
                                           view?.title?.let { viewModel.updateTabTitle(tabIndex, it) }
                                           viewModel.updateTabNavigationState(tabIndex, view?.canGoBack() == true, view?.canGoForward() == true)
-                                     }
-                                 }
+                                      }
+                                  }
 
-                                     webChromeClient = com.jusdots.jusbrowse.security.SecureWebChromeClient(
-                                         onPermissionRequest = { /* Handle permission requests */ },
-                                         onShowCustomViewCallback = { view, callback ->
-                                             fullscreenView = view
-                                             fullscreenCallback = callback
-                                         },
-                                         onHideCustomViewCallback = {
-                                             fullscreenView = null
-                                             fullscreenCallback = null
-                                         }
-                                     ).apply {
-                                         onShowFileChooser = { _, callback, params ->
-                                             if (params == null) {
-                                                 false
-                                             } else {
-                                                 filePathCallback = callback
-                                                 pendingFileChooserParams = params
-                                                 
-                                                 val cameraPermission = ContextCompat.checkSelfPermission(
-                                                     context, android.Manifest.permission.CAMERA
-                                                 ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                                 
-                                                 val storagePermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                                     ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                                 } else {
-                                                     ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                                 }
-                                                 
-                                                 if (cameraPermission && storagePermission) {
-                                                     launchChooser(context, params, true)
-                                                 } else {
-                                                     // Request BOTH permissions
-                                                     val perms = mutableListOf(android.Manifest.permission.CAMERA)
-                                                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                                         perms.add(android.Manifest.permission.READ_MEDIA_IMAGES)
-                                                     } else {
-                                                         perms.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-                                                     }
-                                                     mediaPermissionLauncher.launch(perms.toTypedArray())
-                                                 }
-                                                 true
-                                             }
-                                         }
-                                     }
+                                  webChromeClient = com.jusdots.jusbrowse.security.SecureWebChromeClient(
+                                      onPermissionRequest = { /* Handle permission requests */ },
+                                      onShowCustomViewCallback = { v, cb ->
+                                          fullscreenView = v
+                                          fullscreenCallback = cb
+                                      },
+                                      onHideCustomViewCallback = {
+                                          fullscreenView = null
+                                          fullscreenCallback = null
+                                      }
+                                  ).apply {
+                                      onShowFileChooser = { _, cb, pms ->
+                                          if (pms == null) {
+                                              false
+                                          } else {
+                                              filePathCallback = cb
+                                              pendingFileChooserParams = pms
+                                              
+                                              val cameraPermission = ContextCompat.checkSelfPermission(
+                                                  context, android.Manifest.permission.CAMERA
+                                              ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                              
+                                              val storagePermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                  ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_MEDIA_IMAGES) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                              } else {
+                                                  ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                              }
+                                              
+                                              if (cameraPermission && storagePermission) {
+                                                  launchChooser(context, pms, true)
+                                              } else {
+                                                  val perms = mutableListOf(android.Manifest.permission.CAMERA)
+                                                  if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                      perms.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+                                                  } else {
+                                                      perms.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                                                  }
+                                                  mediaPermissionLauncher.launch(perms.toTypedArray())
+                                              }
+                                              true
+                                          }
+                                      }
+                                  }
 
-                                 viewModel.registerWebView(tab.id, this)
-                                 
-                                 val headers = com.jusdots.jusbrowse.security.FakeModeManager.getHeaders()
-                                 if (headers.isNotEmpty()) {
-                                     loadUrl(tab.url, headers)
-                                 } else {
-                                     loadUrl(tab.url)
-                                 }
-                             }
-                         }
-                     },
-                     update = { webView ->
-                         // Handle Boomer Mode Toggle Dynamically
-                         if (isBoomerMode) {
-                             webView.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.ENABLE_BOOMER_MODE_SCRIPT, null)
-                         } else {
-                             webView.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.DISABLE_BOOMER_MODE_SCRIPT, null)
-                         }
-                         // Lifecycle management: resume when active
-                         webView.onResume()
-                         
-                         // DYNAMIC PERSONA UPDATE
-                         val fakeModeUA = com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent()
-                         val targetUA = fakeModeUA ?: android.webkit.WebSettings.getDefaultUserAgent(webView.context)
-                         
-                         if (webView.settings.userAgentString != targetUA) {
-                             webView.settings.userAgentString = targetUA
-                         }
+                                  viewModel.registerWebView(tab.id, this)
+                                  
+                                  val headers = com.jusdots.jusbrowse.security.FakeModeManager.getHeaders()
+                                  if (headers.isNotEmpty()) {
+                                      loadUrl(tab.url, headers)
+                                  } else {
+                                      loadUrl(tab.url)
+                                  }
+                              }
+                          }
+                      },
+                      update = { webView ->
+                          if (webView.settings.userAgentString != (com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent() ?: android.webkit.WebSettings.getDefaultUserAgent(webView.context))) {
+                               webView.settings.userAgentString = com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent() ?: android.webkit.WebSettings.getDefaultUserAgent(webView.context)
+                          }
+                          
+                          if (CookieManager.getInstance().acceptThirdPartyCookies(webView) != tab.acceptThirdPartyCookies) {
+                              CookieManager.getInstance().setAcceptThirdPartyCookies(webView, tab.acceptThirdPartyCookies)
+                          }
 
-                         // PROTECT IME: Never update URL if user is typing
-                         if (!webView.hasFocus()) {
-                             val normalizedTabUrl = tab.url.removeSuffix("/")
-                             val normalizedWebViewUrl = webView.url?.removeSuffix("/") ?: ""
-                             
-                             if (normalizedWebViewUrl != normalizedTabUrl && !tab.isLoading) {
-                                val headers = com.jusdots.jusbrowse.security.FakeModeManager.getHeaders()
-                                if (headers.isNotEmpty()) {
-                                    webView.loadUrl(tab.url, headers)
-                                } else {
-                                    webView.loadUrl(tab.url)
-                                }
-                            }
-                         }
-                     },
-                     onRelease = { webView ->
-                         // Layer 14: Pausing background activity without clearing state
-                         if (!multiMediaPlaybackEnabled) {
-                             webView.onPause()
-                         }
-                     }
-                 )
+                          if (isBoomerMode) {
+                              webView.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.ENABLE_BOOMER_MODE_SCRIPT, null)
+                          } else {
+                              webView.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.DISABLE_BOOMER_MODE_SCRIPT, null)
+                          }
+                          webView.onResume()
+                          
+                          val fakeModeUA = com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent()
+                          val targetUA = fakeModeUA ?: android.webkit.WebSettings.getDefaultUserAgent(webView.context)
+                          
+                          if (webView.settings.userAgentString != targetUA) {
+                              webView.settings.userAgentString = targetUA
+                          }
+
+                          if (!webView.hasFocus() && !tab.isLoading) {
+                              val targetUrl = tab.url.removeSuffix("/")
+                              val currentUrl = webView.url?.removeSuffix("/") ?: ""
+                              
+                              if (currentUrl != targetUrl && targetUrl != "about:blank" && targetUrl.isNotBlank()) {
+                                  val headers = com.jusdots.jusbrowse.security.FakeModeManager.getHeaders()
+                                  webView.loadUrl(tab.url, headers)
+                              }
+                          }
+                      },
+                      onRelease = { webView ->
+                          if (!multiMediaPlaybackEnabled) {
+                              webView.onPause()
+                          }
+                      }
+                  )
              }
             } else {
                 // Start Page Content (Background is now global)
@@ -749,16 +788,26 @@ fun AddressBarWithWebView(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    if (tab?.isPrivate == true) {
-                        Icon(Icons.Default.VpnKey, "Private", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                    } else if (trackers.isNotEmpty()) {
-                         // Shield Icon for Trackers
-                         Icon(Icons.Default.Shield, "Trackers Blocked", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
-                         Spacer(modifier = Modifier.width(8.dp))
-                    } else if (httpsOnly || (tab?.url?.startsWith("https://") == true)) {
-                        Icon(Icons.Default.Lock, "Secure", modifier = Modifier.size(14.dp), /* tint = MaterialTheme.colorScheme.primary */)
-                        Spacer(modifier = Modifier.width(8.dp))
+                    // Security Indicators Block
+                    Row(
+                        modifier = Modifier.padding(end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (tab?.isPrivate == true) {
+                            Icon(Icons.Default.VpnKey, "Private", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                        }
+                        
+                        if (trackers.isNotEmpty()) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Icon(Icons.Default.Shield, "Trackers Blocked", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error)
+                                Text(text = trackers.size.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        
+                        if (httpsOnly || (tab?.url?.startsWith("https://") == true)) {
+                            Icon(Icons.Default.Lock, "Secure", modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.outline)
+                        }
                     }
                     
                     Text(
@@ -845,59 +894,164 @@ fun AddressBarWithWebView(
             }
         }
 
-        // Download Confirmation Dialog
+        // Better Download Confirmation Dialog
         if (showDownloadWarning && pendingDownloadInfo != null) {
             AlertDialog(
                 onDismissRequest = { showDownloadWarning = false },
-                title = { Text("Download File") },
-                text = { 
-                    Column {
-                        Text(pendingDownloadInfo!!.warningMessage ?: "Do you want to download this file?")
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = pendingDownloadInfo!!.fileName,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                },
-                confirmButton = {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Button(
-                            onClick = {
-                                pendingDownloadUrl?.let { url ->
-                                    viewModel.startDownload(context, url, pendingDownloadInfo!!.fileName)
-                                }
-                                showDownloadWarning = false
-                            }
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                content = {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .padding(16.dp),
+                        shape = RoundedCornerShape(28.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("Download")
-                        }
-                        if (vtApiKey.isNotBlank()) {
-                            TextButton(onClick = { 
-                                pendingDownloadUrl?.let { url ->
-                                    viewModel.scanFile(url, "VirusTotal", context)
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                modifier = Modifier.size(64.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Download,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(32.dp)
+                                    )
                                 }
-                                showDownloadWarning = false 
-                            }) {
-                                Text("Scan with VirusTotal")
+                            }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Text(
+                                text = "Download File",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            Text(
+                                text = pendingDownloadInfo!!.fileName,
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            
+                            if (pendingDownloadInfo!!.warningMessage != null) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Surface(
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = pendingDownloadInfo!!.warningMessage!!,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(24.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { showDownloadWarning = false },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text("Cancel")
+                                }
+                                Button(
+                                    onClick = {
+                                        pendingDownloadUrl?.let { url ->
+                                            viewModel.startDownload(context, url, pendingDownloadInfo!!.fileName)
+                                        }
+                                        showDownloadWarning = false
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text("Download")
+                                }
+                            }
+                            
+                            val showScanOptions = vtApiKey.isNotBlank() || koodousApiKey.isNotBlank()
+                            if (showScanOptions) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                HorizontalDivider(modifier = Modifier.padding(horizontal = 32.dp), color = Color.White.copy(alpha = 0.05f))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (vtApiKey.isNotBlank()) {
+                                        Surface(
+                                            onClick = {
+                                                pendingDownloadUrl?.let { url ->
+                                                    viewModel.scanFile(url, "VirusTotal", context)
+                                                }
+                                                // showDownloadWarning = false // DON'T CLOSE IMMEDIATELY
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(8.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Icon(Icons.Default.Security, null, modifier = Modifier.size(20.dp))
+                                                Text("VirusTotal", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (koodousApiKey.isNotBlank()) {
+                                        Surface(
+                                            onClick = {
+                                                pendingDownloadUrl?.let { url ->
+                                                    viewModel.scanFile(url, "Koodous", context)
+                                                }
+                                                // showDownloadWarning = false // DON'T CLOSE IMMEDIATELY
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(8.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Icon(Icons.Default.Shield, null, modifier = Modifier.size(20.dp))
+                                                Text("Koodous", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
-                        if (koodousApiKey.isNotBlank()) {
-                            TextButton(onClick = { 
-                                pendingDownloadUrl?.let { url ->
-                                    viewModel.scanFile(url, "Koodous", context)
-                                }
-                                showDownloadWarning = false 
-                            }) {
-                                Text("Scan with Koodous")
-                            }
-                        }
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDownloadWarning = false }) {
-                        Text("Cancel")
                     }
                 }
             )

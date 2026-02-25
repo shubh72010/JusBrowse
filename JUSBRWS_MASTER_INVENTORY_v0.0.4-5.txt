@@ -1,0 +1,123 @@
+JusBrowse (v0.0.4-5) - MASTER INVENTORY & SYSTEM ENCYCLOPEDIA
+============================================================
+
+This document provides an exhaustive index of every component, package, feature, and security layer within the JusBrowse codebase.
+
+I. PROJECT ARCHITECTURE & BUILD SYSTEM
+---------------------------------------
+- build.gradle.kts (Project Root): Defines global plugins (Android, Kotlin, Compose).
+- app/build.gradle.kts: Core application configuration.
+  - Namespace: com.jusdots.jusbrowse
+  - Min SDK: 26 (Android 8.0)
+  - Target SDK: 36 (Android 15)
+  - Version: 0.0.4-5
+  - Major Dependencies: Room, DataStore, Compose BOM, WebKit, Media3 (ExoPlayer), Coil, Gson.
+- libs.versions.toml: Version catalog for all 3rd party libraries.
+- proguard-rules.pro: R8/ProGuard rules for code obfuscation and shrinking.
+
+II. CORE APPLICATION LAYER
+---------------------------
+- BrowserApplication.kt: Application entry point. Initializes the Room Database and provides global access to the instance.
+- MainActivity.kt: The single activity hosting the Compose UI. Handles system theme transitions and wallpaper color extraction.
+
+III. DATA LAYER (Models & Persistence)
+--------------------------------------
+- data/models/
+  - Bookmark.kt: Data model for saved URLs.
+  - HistoryItem.kt: Data model for browsing history.
+  - DownloadItem.kt: Data model for managed downloads.
+  - BrowserTab.kt: State container for open tabs (ID, URL, Title, ContainerId).
+  - TrackerInfo.kt: Tracks blocked domains per session.
+  - Shortcut.kt: Pinned sites for the Start Page/Desktop.
+  - Sticker.kt: Data for custom UI stickers/widgets.
+  - SiteSettings.kt: Per-site permission and privacy overrides.
+
+- data/database/ (Room)
+  - AppDatabase.kt: The main SQLite database abstraction.
+  - BookmarkDao.kt: SQL queries for bookmarks.
+  - HistoryDao.kt: SQL queries for history.
+  - DownloadDao.kt: SQL queries for downloads.
+  - SiteSettingsDao.kt: SQL queries for site-specific rules.
+
+- data/repository/
+  - BookmarkRepository.kt: Abstracts bookmark data logic.
+  - HistoryRepository.kt: Abstracts history data logic.
+  - DownloadRepository.kt: Abstracts download data logic.
+  - PreferencesRepository.kt: Manages all user settings via DataStore (DNS, Engines, UI Prefs).
+  - SiteSettingsRepository.kt: Abstracts per-site rule logic.
+
+IV. SECURITY LAYER (The 12-Layer Defense)
+------------------------------------------
+- security/
+  - ContentBlocker.kt: Multi-stage ad/tracker filter with CNAME uncloaking.
+  - DnsResolver.kt: Secure DoH (DNS-over-HTTPS) resolution.
+  - ApiScanner.kt: VirusTotal & Koodous integration for remote file scanning.
+  - SecurityScanner.kt: Local threat detection for URLs.
+  - ContainerManager.kt: Context-based WebView profile isolation.
+  - DownloadValidator.kt: Validates file integrity and origin.
+  - DownloadReceiver.kt: Intercepts system download broadcasts for safety checks.
+  - CoherenceValidator.kt: Fingerprint consistency checker (Pillar 6 of Boring Engine).
+  - FailsafeManager.kt: Emergency UI restoration if security hooks fail.
+  - SuspicionScorer.kt: Aggregates detection events to score site "hostility".
+
+V. PRIVACY LAYER (Anti-Fingerprinting)
+---------------------------------------
+- security (Privacy Engines)/
+  - BoringEngine.kt: "Head Tracking" engine. Stable, session-locked drift.
+  - Priv8Engine.kt: High-entropy API masking (The original privacy core).
+  - RLEngine.kt: Recursive Logic engine for deep proxy spoofing.
+  - FingerprintingProtection.kt: Base JS injection scripts for standard protection.
+  - FakeModeManager.kt: Global persona controller (Switching hardware IDs).
+  - FakePersona.kt: Metadata for specific device personas (iPhone, Pixel, etc.).
+  - PersonaPresets.kt: Pre-defined device hardware profiles.
+  - PrivacyBus.kt: Coordinates data flow between privacy engines.
+  - PrivacyPacket.kt: Data container for sanitized hardware telemetry.
+  - PrivateBrowsingManager.kt: State management for incognito-style sessions.
+  - FollianBlocker.kt: Specialized blocker for modern "soft-tracking" scripts.
+
+VI. UI LAYER (Frontend & Design)
+---------------------------------
+- ui/viewmodel/
+  - BrowserViewModel.kt: The "Brain." Manages tabs, windows, security states, and UI navigation.
+
+- ui/screens/
+  - BrowserScreen.kt: The main multi-tab container screen.
+  - SettingsScreen.kt: Exhaustive settings UI (Privacy, UI, BYOK, Labs).
+  - HistoryScreen.kt: Browsing history management.
+  - BookmarksScreen.kt: Bookmark management.
+  - DownloadsScreen.kt: Download manager with scan results.
+  - Screen.kt: Navigation enum definitions.
+
+- ui/components/
+  - AddressBarWithWebView.kt: The core browser component (URL bar + optimized WebView).
+  - TabWindow.kt: The "Window" wrapper for Freeform mode. Moveable and scalable.
+  - FreeformWorkspace.kt: The virtual desktop environment for multi-window browsing.
+  - AirlockGallery.kt: UI for viewed extracted media.
+  - AirlockViewer.kt: Dedicated player for isolated media.
+  - BrowserToolBar.kt: Main action menu and navigation controls.
+  - BottomTabBar.kt: Alternate navigation for mobile-first mode.
+  - SecurityIndicators.kt: Real-time visual feedback of security/privacy status.
+  - FakeModeDialog.kt: Persona selection and management dialog.
+  - AnimatedBackgrounds.kt: Start page VFX (Parallax, Blur, Gradients).
+  - WebGLBackgroundView.kt: GPU-accelerated start page visualizers.
+  - DragDropOverlay.kt: File/Sticker drag interaction layer.
+  - DesktopIcon.kt: Start page shortcut rendering.
+  - TransformableSticker.kt: UI for moveable start-page widgets.
+
+VII. UTILS & ASSETS
+--------------------
+- utils/
+  - MediaExtractor.kt: Complex JS injector to find hidden media sources.
+  - AirlockVaultManager.kt: Manages local isolation and caching of discovered media.
+
+- assets/
+  - adblock_list.txt: The primary domain-based filter list.
+  - shaders/: Custom GLSL shaders for UI effects.
+
+- res/values/
+  - strings.xml: App localized strings.
+  - colors.xml: Core color tokens for the theme.
+  - themes.xml: Material3 theme definitions.
+
+============================================================
+End of Master Inventory. Document Generated by Antigravity AI.

@@ -94,7 +94,17 @@ object AirlockVaultManager {
             
             val fileName = "img_${UUID.randomUUID()}.webp"
             val file = File(dir, fileName)
-            val out = FileOutputStream(file)
+            
+            // At-Rest Encryption Layer
+            val masterKey = com.jusdots.jusbrowse.security.EncryptionManager.getMasterKey(com.jusdots.jusbrowse.BrowserApplication.getInstance())
+            val encryptedFile = androidx.security.crypto.EncryptedFile.Builder(
+                com.jusdots.jusbrowse.BrowserApplication.getInstance(),
+                file,
+                masterKey,
+                androidx.security.crypto.EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
+            ).build()
+            
+            val out = encryptedFile.openFileOutput()
             
             // Layer 14: Radical compression for tiny footprint
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -122,7 +132,17 @@ object AirlockVaultManager {
             val extension = urlString.substringAfterLast('.', "dat")
             val fileName = "${prefix}_${UUID.randomUUID()}.$extension"
             val file = File(dir, fileName)
-            val out = FileOutputStream(file)
+            
+            // At-Rest Encryption Layer
+            val masterKey = com.jusdots.jusbrowse.security.EncryptionManager.getMasterKey(com.jusdots.jusbrowse.BrowserApplication.getInstance())
+            val encryptedFile = androidx.security.crypto.EncryptedFile.Builder(
+                com.jusdots.jusbrowse.BrowserApplication.getInstance(),
+                file,
+                masterKey,
+                androidx.security.crypto.EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
+            ).build()
+            
+            val out = encryptedFile.openFileOutput()
             input.copyTo(out)
             out.close()
             input.close()
