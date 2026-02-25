@@ -1,3 +1,5 @@
+https://shubh72010.github.io/JusBrowse-Devs/
+
 # The JusBrowse Project. 
 
 We, have entered to an infinite war... You can't finish off everyone but everyone can finish off you. It's pure nightmare, every API output can pull off the entire mask, the depth the some trackers go in inmesurable, now, you've entered the war, there's no going back... privacy that I am tirelessly trying to protect isn't just a checkbox; it’s a leaking boat. Every time you plug a hole in the Canvas API, the Audio Stack starts leaking. Every time you fix the Audio, the font-rendering engine sells you away.
