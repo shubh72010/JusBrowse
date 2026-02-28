@@ -1,4 +1,4 @@
-https://shubh72010.github.io/JusBrowse-Devs/
+https://shubh72010.github.io/JusDots-Devs/
 
 # The JusBrowse Project. 
 
