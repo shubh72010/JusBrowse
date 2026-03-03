@@ -1,0 +1,391 @@
+package com.jusdots.jusbrowse.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.animation.core.*
+import kotlinx.coroutines.flow.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerInputChange
+import com.jusdots.jusbrowse.ui.components.AddressBarWithWebView
+import com.jusdots.jusbrowse.ui.components.BottomTabBar
+import com.jusdots.jusbrowse.ui.components.BrowserToolBar
+import com.jusdots.jusbrowse.ui.components.FreeformWorkspace
+import com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel
+import com.jusdots.jusbrowse.ui.components.AirlockGallery
+import com.jusdots.jusbrowse.ui.components.AirlockViewer
+import com.jusdots.jusbrowse.ui.components.MediaData
+import com.jusdots.jusbrowse.utils.MediaExtractor
+import com.google.gson.Gson
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Color
+import com.jusdots.jusbrowse.ui.components.BackgroundRenderer
+import com.jusdots.jusbrowse.ui.components.TransformableSticker
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.VideoView
+import android.net.Uri
+import android.media.MediaPlayer
+import androidx.compose.ui.input.pointer.pointerInput
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BrowserScreen(
+    viewModel: BrowserViewModel,
+    modifier: Modifier = Modifier
+) {
+    // Collect active tab state - though we use Independent Windows mostly now
+    val activeTabIndex by viewModel.activeTabIndex.collectAsStateWithLifecycle()
+    val tabs = viewModel.tabs
+    val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val isMultiView by viewModel.isMultiViewMode.collectAsStateWithLifecycle()
+    val showTabIcons by viewModel.showTabIcons.collectAsStateWithLifecycle(initialValue = false)
+
+    val context = LocalContext.current
+    
+    // Helper to trigger extraction
+    fun openAirlockGallery() {
+        val currentTab = if (activeTabIndex in tabs.indices) tabs[activeTabIndex] else null
+        if (currentTab != null) {
+            viewModel.getWebView(currentTab.id)?.evaluateJavascript(MediaExtractor.EXTRACT_MEDIA_SCRIPT) { result ->
+                if (result != null && result != "null") {
+                     try {
+                         val json = if (result.startsWith("\"") && result.endsWith("\"")) {
+                             result.substring(1, result.length - 1)
+                                 .replace("\\\"", "\"")
+                                 .replace("\\\\", "\\")
+                         } else result
+                         
+                         val data = Gson().fromJson(json, MediaData::class.java)
+                         viewModel.openAirlockGallery(data)
+                     } catch (e: Exception) {
+                         e.printStackTrace()
+                     }
+                }
+            }
+        }
+    }
+
+    // Handle Back Press at high level
+    androidx.activity.compose.BackHandler(enabled = true) {
+        when (currentScreen) {
+            Screen.SETTINGS, Screen.HISTORY, Screen.BOOKMARKS, Screen.DOWNLOADS -> {
+                viewModel.navigateToScreen(Screen.BROWSER)
+            }
+            Screen.BROWSER -> {
+                // If in multi-view, maybe exit multi-view?
+                if (isMultiView) {
+                    // For now, let it exit app or user logic preference
+                    // Could toggle toggleMultiViewMode()
+                } else {
+                     // In single view, try to go back in active Webview
+                    val currentTab = if (activeTabIndex in tabs.indices) tabs[activeTabIndex] else null
+                    if (currentTab != null) {
+                        val webView = viewModel.getWebView(currentTab.id)
+                        if (webView?.canGoBack() == true) {
+                            webView.goBack()
+                        } else {
+                            // Minimize/Close app if cant go back
+                            // We don't have activity context easily here to separate exit
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        val wallpaperUri by viewModel.startPageWallpaperUri.collectAsStateWithLifecycle(initialValue = null)
+        val blurAmount by viewModel.startPageBlurAmount.collectAsStateWithLifecycle(initialValue = 0f)
+        val backgroundPresetName by viewModel.backgroundPreset.collectAsStateWithLifecycle(initialValue = "NONE")
+        
+        val backgroundPreset = try {
+            com.jusdots.jusbrowse.ui.theme.BackgroundPreset.valueOf(backgroundPresetName)
+        } catch (e: Exception) {
+            com.jusdots.jusbrowse.ui.theme.BackgroundPreset.NONE
+        }
+
+        // Dynamic Blur for Secondary Screens
+        val secondaryScreenBlur = if (currentScreen != Screen.BROWSER) 25.dp else 0.dp
+        val totalBlurAmount = (blurAmount.dp + secondaryScreenBlur)
+
+        val stickers = viewModel.stickers
+        val selectedStickerId by viewModel.selectedStickerId.collectAsStateWithLifecycle()
+
+        // Global Background Layer
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Animated Background Preset (if no custom wallpaper)
+            if (wallpaperUri == null && backgroundPreset != com.jusdots.jusbrowse.ui.theme.BackgroundPreset.NONE) {
+                BackgroundRenderer(
+                    preset = backgroundPreset,
+                    modifier = Modifier.fillMaxSize().blur(totalBlurAmount)
+                )
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)))
+            }
+            
+            // Custom Wallpaper (Image or Video)
+            if (wallpaperUri != null) {
+                val uri = Uri.parse(wallpaperUri)
+                val isVideo = context.contentResolver.getType(uri)?.startsWith("video/") == true || 
+                              wallpaperUri!!.lowercase().endsWith(".mp4") || 
+                              wallpaperUri!!.lowercase().endsWith(".mkv") ||
+                              wallpaperUri!!.lowercase().endsWith(".webm")
+
+                if (isVideo) {
+                    AndroidView(
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                setVideoURI(uri)
+                                setOnPreparedListener { mp ->
+                                    mp.isLooping = true
+                                    mp.setVolume(0f, 0f)
+                                    // Scale to fit center crop style
+                                    val videoWidth = mp.videoWidth.toFloat()
+                                    val videoHeight = mp.videoHeight.toFloat()
+                                    val viewWidth = width.toFloat()
+                                    val viewHeight = height.toFloat()
+                                    val scale = Math.max(viewWidth / videoWidth, viewHeight / videoHeight)
+                                    // This scaling is tricky with VideoView, usually requires an overlay or custom layout
+                                    // For now, simple VideoView is enough
+                                    start()
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize().blur(totalBlurAmount),
+                        update = { view ->
+                             // Ensure it's still playing/correct URI if it changes
+                             // view.setVideoURI(uri) // Careful with restarts
+                        },
+                        onRelease = { view ->
+                            view.stopPlayback()
+                            view.setVideoURI(null)
+                        }
+                    )
+                } else {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(wallpaperUri)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().blur(totalBlurAmount)
+                    )
+                }
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
+            }
+        }
+
+        // Global Hide/Reveal Animation Logic
+        LaunchedEffect(Unit) {
+            merge(
+                viewModel.revealBottomBarEvent.map { 0f },
+                viewModel.hideBottomBarEvent.map { 
+                    // Use a reasonable default or the last known height if available
+                    // For now, 150f is a safe bet for the full bar + padding
+                    150f * context.resources.displayMetrics.density 
+                }
+            ).collectLatest { targetValue ->
+                val currentOffset = viewModel.bottomBarOffsetHeightPx.value
+                androidx.compose.animation.core.animate(
+                    initialValue = currentOffset,
+                    targetValue = targetValue,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    )
+                ) { value, _ ->
+                    viewModel.updateBottomBarOffset(value)
+                }
+            }
+        }
+
+        Scaffold(
+            modifier = modifier.fillMaxSize(),
+            containerColor = Color.Transparent,
+            topBar = {
+                // In Multi-View, keep a minimal toolbar at the top
+                if (isMultiView) {
+                    BrowserToolBar(
+                        viewModel = viewModel,
+                        currentTab = null,
+                        onOpenAirlockGallery = { openAirlockGallery() }
+                    )
+                }
+            },
+            bottomBar = {
+                // Moved BottomTabBar out of scaffold bottomBar slot to prevent touch blocking
+                // It will now be placed as an overlay in the main Box below
+            }
+        ) { paddingValues ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (currentScreen) {
+                    Screen.BROWSER -> {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            if (isMultiView) {
+                                FreeformWorkspace(
+                                    viewModel = viewModel,
+                                    tabs = tabs,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                if (activeTabIndex in tabs.indices) {
+                                    AddressBarWithWebView(
+                                        viewModel = viewModel,
+                                        tabIndex = activeTabIndex,
+                                        onOpenAirlockGallery = { openAirlockGallery() },
+                                        modifier = Modifier.fillMaxSize(),
+                                        stickerContent = {
+                                            val stickersEnabled by viewModel.stickersEnabled.collectAsStateWithLifecycle(initialValue = true)
+                                            val activeTab = tabs.getOrNull(activeTabIndex)
+                                            val isStartPage = activeTab?.url == "about:blank" || activeTab?.url?.isEmpty() == true
+                                            
+                                            if (stickersEnabled && currentScreen == Screen.BROWSER && !isMultiView && isStartPage) {
+                                                BoxWithConstraints(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .pointerInput(Unit) {
+                                                            detectTapGestures {
+                                                                viewModel.setSelectedStickerId(null)
+                                                            }
+                                                        }
+                                                ) {
+                                                    val sWidth = maxWidth.value
+                                                    val sHeight = maxHeight.value
+                                                    
+                                                    stickers.forEach { sticker ->
+                                                        TransformableSticker(
+                                                            sticker = sticker,
+                                                            isSelected = selectedStickerId == sticker.id,
+                                                            screenWidth = sWidth,
+                                                            screenHeight = sHeight,
+                                                            onTransform = { x, y, w, h, r ->
+                                                                viewModel.updateStickerTransform(sticker.id, x, y, w, h, r)
+                                                            },
+                                                            onClick = {
+                                                                viewModel.setSelectedStickerId(sticker.id)
+                                                                sticker.link?.let { link ->
+                                                                    viewModel.navigateToUrlByTabId(activeTab?.id ?: "", link)
+                                                                }
+                                                            },
+                                                            onDelete = {
+                                                                viewModel.removeSticker(sticker.id)
+                                                            }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+
+                            // Floating Bottom Tab Bar Overlay
+                            val isKeyboardVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+                            if (!isMultiView && !isKeyboardVisible) {
+                                BottomTabBar(
+                                    tabs = tabs,
+                                    activeTabIndex = activeTabIndex,
+                                    onTabSelected = { index -> viewModel.switchTab(index) },
+                                    onTabClosed = { index -> viewModel.closeTab(index) },
+                                    onNewTab = { containerId -> viewModel.createNewTab(containerId = containerId) },
+                                    showIcons = showTabIcons,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .navigationBarsPadding()
+                                )
+                            }
+                        }
+                    }
+                    Screen.BOOKMARKS -> {
+                        BookmarksScreen(
+                            viewModel = viewModel,
+                            onBack = { viewModel.navigateToScreen(Screen.BROWSER) }
+                        )
+                    }
+                    Screen.HISTORY -> {
+                        HistoryScreen(
+                            viewModel = viewModel,
+                            onBack = { viewModel.navigateToScreen(Screen.BROWSER) }
+                        )
+                    }
+                    Screen.SETTINGS -> {
+                        SettingsScreen(
+                            viewModel = viewModel,
+                            onBack = { viewModel.navigateToScreen(Screen.BROWSER) }
+                        )
+                    }
+                    Screen.DOWNLOADS -> {
+                        DownloadsScreen(
+                            viewModel = viewModel,
+                            onBack = { viewModel.navigateToScreen(Screen.BROWSER) }
+                        )
+                    }
+                }
+
+                // Global Overlays
+                if (viewModel.showGallery && viewModel.galleryMediaData != null) {
+                    AirlockGallery(
+                        mediaData = viewModel.galleryMediaData!!,
+                        isVaulting = viewModel.isVaulting,
+                        vaultProgress = viewModel.vaultProgress,
+                        onMediaClick = { url, mimeType, list, index ->
+                            viewModel.openAirlockViewer(url, mimeType, list, index)
+                            viewModel.showGallery = false
+                        },
+                        onClose = { viewModel.closeAirlock() },
+                        modifier = Modifier.align(Alignment.Center) 
+                    )
+                }
+
+                if (viewModel.showAirlock) {
+                    AirlockViewer(
+                        initialUrl = viewModel.airlockUrl,
+                        initialMimeType = viewModel.airlockMimeType,
+                        mediaList = viewModel.viewerMediaList,
+                        initialIndex = viewModel.viewerInitialIndex,
+                        onDismiss = { 
+                            viewModel.showAirlock = false
+                            viewModel.showGallery = true 
+                        },
+                        onDownload = { url ->
+                            viewModel.startDownload(context, url, android.webkit.URLUtil.guessFileName(url, null, null))
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                // 3. Global Reveal Trigger (Bypass Overlays) - Hardened
+                // catches upward swipes even if BottomTabBar or other overlays are absorbing touches.
+                // increased height to cover the tab bar region and navigation bar.
+                val bottomBarOffsetHeightPxState by viewModel.bottomBarOffsetHeightPx.collectAsStateWithLifecycle()
+                
+                if (currentScreen == Screen.BROWSER && !isMultiView && bottomBarOffsetHeightPxState > 10f) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd) // Bottom-Right corner
+                            .size(120.dp) // Swipe up zone size
+                            .pointerInput(bottomBarOffsetHeightPxState) {
+                                detectVerticalDragGestures { _: PointerInputChange, dragAmount: Float ->
+                                    if (dragAmount < -10f) {
+                                        viewModel.triggerRevealBottomBar()
+                                    }
+                                }
+                            }
+                    )
+                }
+            }
+        }
+    }
+}

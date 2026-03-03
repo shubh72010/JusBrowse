@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Security: Network Security Configuration for TLS enforcement -->
+<network-security-config>
+    <!-- Base config: Cleartext permitted for user-navigated sites, system CAs only -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- App-internal API endpoints: FORCE TLS, no cleartext allowed -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">cloudflare-dns.com</domain>
+        <domain includeSubdomains="true">dns.google</domain>
+        <domain includeSubdomains="true">www.virustotal.com</domain>
+        <domain includeSubdomains="true">koodous.com</domain>
+    </domain-config>
+</network-security-config>
