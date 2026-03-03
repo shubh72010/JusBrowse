@@ -19,4 +19,4 @@ JusBrowse is built using the following third-party components and libraries. We 
 ---
 
 ### Licensing Note
-JusBrowse itself is licensed under the **MIT License**. None of the current dependencies use the GPL license, meaning the project maintains its permissive MIT status without viral inheritance constraints.
+JusBrowse itself is licensed under the **GPL v3 License**. None of the current dependencies use the GPL license, meaning the project maintains its permissive GPL status without viral inheritance constraints.
