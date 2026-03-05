@@ -473,7 +473,7 @@ fun AddressBarWithWebView(
                                                 settings.loadWithOverviewMode = false
                                             }
                                             else -> {
-                                                settings.userAgentString = null
+                                                settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36"
                                                 settings.useWideViewPort = false
                                                 settings.loadWithOverviewMode = false
                                             }
@@ -486,6 +486,9 @@ fun AddressBarWithWebView(
                                         boringEnabled = boringEnabled,
                                         whitelist = protectionWhitelist.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                                     )
+
+                                    android.util.Log.d("JusBrowse", "DOCUMENT_START_SCRIPT supported: ${androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)}")
+                                    android.util.Log.d("JusBrowse", "FP Script mode: jusFake=$jusFakeEnabled boring=$boringEnabled default=${!jusFakeEnabled && !boringEnabled}")
 
                                     if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                                         androidx.webkit.WebViewCompat.addDocumentStartJavaScript(this, fpScript, setOf("*"))
@@ -542,28 +545,8 @@ fun AddressBarWithWebView(
                                             request: WebResourceRequest?
                                         ): WebResourceResponse? {
                                             val url = request?.url?.toString() ?: return null
-                                            
-                                            // 1. Ad Block / Tracker Block
-                                            if (adBlockEnabled && viewModel.contentBlocker.shouldBlockFast(url) { domain ->
-                                                    viewModel.recordBlockedTracker(tab.id, domain)
-                                                }) {
-                                                return WebResourceResponse(
-                                                    "text/plain", "UTF-8",
-                                                    ByteArrayInputStream("".toByteArray())
-                                                )
-                                            }
 
-                                            // 1b. HTTPS-first: Intercept cleartext BEFORE the connection is made
-                                            if (httpsOnly && url.startsWith("http://")) {
-                                                val httpsUrl = url.replaceFirst("http://", "https://")
-                                                val headers = mapOf("Location" to httpsUrl)
-                                                return WebResourceResponse(
-                                                    "text/html", "UTF-8", 301, "Moved Permanently",
-                                                    headers, ByteArrayInputStream("".toByteArray())
-                                                )
-                                            }
-
-                                            // 2. Phase 3: The Surgeon: Strip X-Requested-With
+                                            // Content blocking + HTTPS-only + header surgery all handled by NetworkSurgeon with Neutral Responses
                                             val whitelistedDomains = protectionWhitelist.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                                             
                                             // DETERMINING UA WITHOUT CALLING VIEW.SETTINGS (THREAD SAFETY)
@@ -574,7 +557,9 @@ fun AddressBarWithWebView(
                                                 else -> null
                                             }
 
-                                            val surgicallyCleanedResponse = NetworkSurgeon.intercept(request, whitelistedDomains, currentUA)
+                                            val containerId = if (tab.isPrivate) "private_${tab.id}" else tab.containerId ?: "default"
+                                            val blocker = if (adBlockEnabled) viewModel.contentBlocker else null
+                                            val surgicallyCleanedResponse = NetworkSurgeon.intercept(request, whitelistedDomains, currentUA, httpsOnly, containerId, blocker)
                                             if (surgicallyCleanedResponse != null) {
                                                 return surgicallyCleanedResponse
                                             }
@@ -587,6 +572,16 @@ fun AddressBarWithWebView(
                                             url: String?,
                                             favicon: android.graphics.Bitmap?
                                         ) {
+                                            super.onPageStarted(view, url, favicon)
+                                            if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                                                view?.evaluateJavascript(com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript(
+                                                    webViewVersion = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "133.0.0.0",
+                                                    defaultEnabled = !jusFakeEnabled && !boringEnabled,
+                                                    jusFakeEnabled = jusFakeEnabled,
+                                                    boringEnabled = boringEnabled,
+                                                    whitelist = protectionWhitelist.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                                                ), null)
+                                            }
                                             com.jusdots.jusbrowse.security.SuspicionScorer.reset()
 
                                             if (!tab.isPrivate) {
@@ -693,27 +688,16 @@ fun AddressBarWithWebView(
                                 )
                             }
 
-                            // Re-apply UserAgentMetadata if engine state changed
-                            val webViewVersion = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(webView.context)?.versionName ?: "131.0.0.0"
-                            val metadata = if (boringEnabled) {
-                                com.jusdots.jusbrowse.security.BoringEngine.getUserAgentMetadata(webViewVersion)
-                            } else if (jusFakeEnabled) {
-                                com.jusdots.jusbrowse.security.FakeModeManager.getUserAgentMetadata()
-                            } else null
-
-                            if (metadata != null && androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
-                                androidx.webkit.WebSettingsCompat.setUserAgentMetadata(webView.settings, metadata)
+                            // Advanced Privacy: Handle dynamic UA/Metadata updates if engine state changed
+                            val wvVersion = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(webView.context)?.versionName ?: "133.0.0.0"
+                            val targetUA = when {
+                                tab.isDesktopMode -> com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.DESKTOP_USER_AGENT
+                                boringEnabled -> com.jusdots.jusbrowse.security.BoringEngine.getFormattedUserAgent(wvVersion)
+                                jusFakeEnabled -> com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent()
+                                else -> "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36"
                             }
 
-                            // Re-apply UA String
-                            val targetUA = if (boringEnabled) {
-                                com.jusdots.jusbrowse.security.BoringEngine.getFormattedUserAgent(webViewVersion)
-                            } else if (jusFakeEnabled) {
-                                com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent()
-                                    ?: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36"
-                            } else null
-
-                            if (targetUA != null && webView.settings.userAgentString != targetUA) {
+                            if (webView.settings.userAgentString != targetUA) {
                                 webView.settings.userAgentString = targetUA
                             }
 
@@ -804,7 +788,7 @@ fun AddressBarWithWebView(
                         addRoundRect(
                             androidx.compose.ui.geometry.RoundRect(
                                 rect = Rect(Offset.Zero, size),
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2f)
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(animatedCornerRadius.toPx())
                             )
                         )
                     }
@@ -1079,8 +1063,6 @@ fun AddressBarWithWebView(
                                     val currentDomain = try { android.net.Uri.parse(tab?.url ?: "").host ?: "" } catch (e: Exception) { "" }
                                     
                                      val menuItems = listOf<Triple<Any, String, () -> Unit>>(
-                                        Triple(Icons.Default.Home, "Home", { viewModel.createNewTab(); showPillMenu = false }),
-                                        Triple(Icons.Default.GridView, "Multi-View", { viewModel.toggleMultiViewMode(); showPillMenu = false }),
                                         Triple(Icons.Default.Refresh, "Refresh", { viewModel.getWebView(tab?.id ?: "")?.reload(); showPillMenu = false }),
                                         Triple(
                                             "LOGO",
@@ -1092,28 +1074,11 @@ fun AddressBarWithWebView(
                                                 showPillMenu = false
                                             }
                                         ),
-                                        Triple(Icons.Default.ContentCopy, "Copy URL", {
-                                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                            val clip = android.content.ClipData.newPlainText("URL", tab?.url ?: "")
-                                            clipboard.setPrimaryClip(clip)
-                                            showPillMenu = false
-                                        }),
-                                         Triple(
-                                             if (tab?.isDesktopMode == true) Icons.Default.Laptop else Icons.Default.Smartphone,
-                                             if (tab?.isDesktopMode == true) "Mobile Site" else "Desktop Site",
-                                             { 
-                                                 if (tab != null) {
-                                                     viewModel.toggleDesktopMode(tab.id)
-                                                     viewModel.getWebView(tab.id)?.reload()
-                                                 }
-                                                 showPillMenu = false 
-                                             }
-                                         ),
                                         Triple(Icons.Default.History, "History", { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.HISTORY); showPillMenu = false }),
                                         Triple(Icons.Default.Download, "Downloads", { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.DOWNLOADS); showPillMenu = false }),
-                                        Triple(Icons.Default.Bookmark, "Bookmarks", { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.BOOKMARKS); showPillMenu = false }),
                                         Triple(Icons.Default.PhotoLibrary, "Gallery", { onOpenAirlockGallery(); showPillMenu = false }),
                                         Triple(Icons.Default.VpnKey, "Private", { viewModel.createNewTab(isPrivate = true); showPillMenu = false }),
+                                        Triple(Icons.Default.Assignment, "Trackers", { showTrackerDetails = true; showPillMenu = false }),
                                         Triple(Icons.Default.Layers, "Container", { showContainers = true }),
                                         Triple(Icons.Default.Settings, "Settings", { viewModel.navigateToScreen(com.jusdots.jusbrowse.ui.screens.Screen.SETTINGS); showPillMenu = false }),
                                         Triple(Icons.Default.Warning, "Boomer", { viewModel.toggleBoomerMode(); showPillMenu = false })
@@ -1271,32 +1236,49 @@ fun AddressBarWithWebView(
                             }
                         } else {
                             // Collapsed Row Logic
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 18.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (tab?.isPrivate == true) Icons.Default.VpnKey else if (isWhitelisted) Icons.Default.VerifiedUser else Icons.Default.Lock,
-                                    contentDescription = null,
-                                    tint = if (isWhitelisted) SecureGreen else MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = urlTextFieldValue.text,
-                                    color = Color.White,
+                                Row(
                                     modifier = Modifier
-                                        .graphicsLayer(
-                                            compositingStrategy = CompositingStrategy.Offscreen,
-                                            blendMode = BlendMode.Difference
-                                        ),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                                        .fillMaxSize()
+                                        .padding(horizontal = 18.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier.clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null
+                                        ) { showTrackerDetails = true }
+                                    ) {
+                                        Icon(
+                                            imageVector = if (tab?.isPrivate == true) Icons.Default.VpnKey else if (isWhitelisted) Icons.Default.VerifiedUser else Icons.Default.Lock,
+                                            contentDescription = "Privacy Status",
+                                            tint = if (isWhitelisted) SecureGreen else if (trackers.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        if (trackers.isNotEmpty()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .align(Alignment.TopEnd)
+                                                    .offset(x = 4.dp, y = (-4).dp)
+                                                    .background(MaterialTheme.colorScheme.error, CircleShape)
+                                                    .border(1.dp, Color.White, CircleShape)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = urlTextFieldValue.text,
+                                        color = Color.White,
+                                        modifier = Modifier
+                                            .graphicsLayer(
+                                                compositingStrategy = CompositingStrategy.Offscreen,
+                                                blendMode = BlendMode.Difference
+                                            ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                         }
                     }
                 }

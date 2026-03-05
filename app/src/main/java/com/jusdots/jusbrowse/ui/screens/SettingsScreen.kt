@@ -1105,7 +1105,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     
                     Text(
-                        text = "Version 0.0.5-4",
+                        text = "Version 0.0.5-6",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
                     )

@@ -117,7 +117,7 @@ fun AirlockViewer(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 32.dp + 48.dp) // Above controls if any, or just safe area
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .background(Color.Black, RoundedCornerShape(16.dp))
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
@@ -145,7 +145,7 @@ fun AirlockViewer(
                                 }
                             },
                             shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.3f),
+                            color = Color.Black,
                             contentColor = Color.White,
                             modifier = Modifier.size(48.dp)
                         ) {
@@ -170,7 +170,7 @@ fun AirlockViewer(
                                 }
                             },
                             shape = CircleShape,
-                            color = Color.Black.copy(alpha = 0.3f),
+                            color = Color.Black,
                             contentColor = Color.White,
                             modifier = Modifier.size(48.dp)
                         ) {
@@ -321,7 +321,7 @@ private fun VideoAirlock(url: String) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.4f))
+                    .background(Color.Black.copy(alpha = 0.7f))
             ) {
                 // Center Play/Pause
                 IconButton(
@@ -329,7 +329,7 @@ private fun VideoAirlock(url: String) {
                     modifier = Modifier
                         .align(Alignment.Center)
                         .size(80.dp)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.2f), CircleShape)
+                        .background(MaterialTheme.colorScheme.surface, CircleShape)
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -448,7 +448,7 @@ private fun AudioAirlock(url: String) {
             modifier = Modifier
                 .size(240.dp)
                 .clip(RoundedCornerShape(32.dp)),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)
+            color = MaterialTheme.colorScheme.primaryContainer
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(

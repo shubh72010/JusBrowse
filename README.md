@@ -15,18 +15,23 @@ so yeah, no giving up, motivation high and privacy to max 💪
 24/02/2026
 Update; from now on I'll be releasing the new updates as "Pre release" instead of "normal release" like 
 
-"v0.0.5-4-5 (Alpha 5.2.5)" 
+"v0.0.5-6-5 (Alpha 5.2.5)" 
 
 And, you may have noticed in the recent versions i use letters like:
 
-"v0.0.5-4-5b" the letter naming are for "Hotfixes"
+"v0.0.5-6-5b" the letter naming are for "Hotfixes"
 
 And the Final release will be like:
 
 "v0.0.6 (Alpha 6)"
 
 ---
+05/03/2026
+Update: codebase updated to Alpha 5.6; v0.0.5-6. Enhancement in Fingerprint Reduction (now ~16 bits)
+
+---
 
 # 📚 Documentation
-For a detailed technical breakdown of how JusBrowse works, its architecture, and its advanced security features, please refer to the [DOCUMENTATION.md](DOCUMENTATION.md) file.
+- **[Official Wiki](wiki/Home.md)**: Comprehensive guide to features, architecture, and security.
+- **[Technical Deep-Dive](DOCUMENTATION.md)**: Detailed technical breakdown for engineers.
 

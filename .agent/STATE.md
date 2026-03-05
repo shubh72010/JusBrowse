@@ -1,3 +1,3 @@
-- Current Progress: Pushed refined menu (14 buttons, throw-down gesture, fixed scrim) to GitHub securely.
-- Active Constraints: No Tailwind; Offline-only; Vanilla CSS/M3; Glassmorphism aesthetics.
-- Immediate Next Step: Final notification to user and project wrap-up for this task.
+- **Current Progress**: Fixed Deployment Bug (Start Scripts) and completed Phase 2 (Secondary Vectors).
+- **Active Constraints**: Nearest-lookup screen snapping, forced en-US locale, addDocumentStartScript for modern devices.
+- **Immediate Next Step**: Begin Phase 3: Trie-based Network Tracker Blocking.

@@ -15,7 +15,7 @@ android {
         minSdk = 26 // Security: Kills ancient WebView exploits, enables modern APIs
         targetSdk = 36
         versionCode = 1
-        versionName = "0.0.5-4"
+        versionName = "0.0.5-6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -44,6 +44,8 @@ object FakeModeManager {
     var bridgeNamePrivacy: String = generateBridgeName()
         private set
 
+    var isLanguageNormalizationEnabled: Boolean = true
+
     private fun generateBridgeName(): String {
         val chars = ('a'..'z') + ('A'..'Z')
         return (1..12).map { chars[secureRandom.nextInt(chars.size)] }.joinToString("")
@@ -219,8 +221,8 @@ object FakeModeManager {
         
         return when {
             jusFakeEnabled && persona != null -> generatePersonaScript(persona, whitelist)
-            boringEnabled -> BoringEngine.generateScript(sessionSeed, webViewVersion)
-            defaultEnabled -> FingerprintingProtection.getProtectionScript(sessionSeed.toInt(), whitelist)
+            boringEnabled -> BoringEngine.generateScript(sessionSeed, webViewVersion, isLanguageNormalizationEnabled)
+            defaultEnabled -> FingerprintingProtection.getProtectionScript(sessionSeed.toInt(), isLanguageNormalizationEnabled, whitelist)
             else -> FingerprintingProtection.minimalProtectionScript
         }
     }
@@ -259,6 +261,7 @@ object FakeModeManager {
         val platform = escapeJs(data[PrivacyPacket.KEY_PLATFORM] as? String ?: "Android")
         val platformString = escapeJs(data[PrivacyPacket.KEY_PLATFORM_STRING] as? String ?: "Linux aarch64")
         val language = escapeJs(data[PrivacyPacket.KEY_LANGUAGE] as? String ?: "en-US")
+        val languages = "['en-US', 'en']" // Default fallback for spoofing
         
         // Calculate dynamic JS offset for the processed timezone
         val tz = java.util.TimeZone.getTimeZone(tzId)
@@ -281,6 +284,7 @@ object FakeModeManager {
                 }
                 const NOISE_SEED = ${persona.noiseSeed};
                 const PRIVACY_STATE = '${processedPacket.state}';
+                const normalizeLanguage = $isLanguageNormalizationEnabled;
                 
                 // --- TELEMETRY BRIDGE ---
                 const reportSuspicion = (pts, reason) => {
@@ -289,228 +293,203 @@ object FakeModeManager {
                     }
                 };
 
-                // Mulberry32 PRNG for stable, seeded noise
-                const prng = (function(seed) {
-                    return function() {
-                        let t = seed += 0x6D2B79F5;
-                        t = Math.imul(t ^ t >>> 15, t | 1);
-                        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-                        return ((t ^ t >>> 14) >>> 0) / 4294967296;
-                    };
-                })(NOISE_SEED);
+                // --- PRNG: Improved seeded random for noise ---
+                function seededRandom(index) {
+                    let x = NOISE_SEED ^ (index * 1664525 + 1013904223);
+                    x = ((x >> 16) ^ x) * 0x45d9f3b;
+                    x = ((x >> 16) ^ x) * 0x45d9f3b;
+                    x = (x >> 16) ^ x;
+                    return (x & 0xFF);
+                }
 
-                // --- UTILS: Native Function Masquerade ---
+                function getNoise(index, magnitude) {
+                    return ((seededRandom(index) / 255) - 0.5) * 2 * magnitude;
+                }
+
+                function clamp(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+
+                // --- NATIVE FUNCTION MASQUERADE ---
                 const originalToString = Function.prototype.toString;
                 const fakeToStringSymbol = Symbol('fakeToString');
                 
                 const makeNative = (fn, name) => {
                     if (name) {
-                        Object.defineProperty(fn, 'name', { value: name, configurable: true });
+                        try { Object.defineProperty(fn, 'name', { value: name, configurable: true }); } catch(e) {}
                     }
-                    const nativeString = `function ${"$"}{fn.name || ''}() { [native code] }`;
-                    fn[fakeToStringSymbol] = nativeString;
+                    fn[fakeToStringSymbol] = `function ${"$"}{name || fn.name || ''}() { [native code] }`;
                     return fn;
                 };
 
-                Function.prototype.toString = function() {
+                Function.prototype.toString = makeNative(function() {
                     if (typeof this === 'function' && this[fakeToStringSymbol]) {
                         return this[fakeToStringSymbol];
                     }
                     return originalToString.call(this);
-                };
-                makeNative(Function.prototype.toString, 'toString');
+                }, 'toString');
 
-                const defineSafeProp = (obj, prop, getter) => {
-                    Object.defineProperty(obj, prop, {
-                        get: makeNative(getter, 'get ' + prop),
-                        enumerable: true,
-                        configurable: true
-                    });
-                };
-
-                // --- 0. API OCCLUSION (Fix 16) ---
-                if (navigator.gpu) {
-                    try { Object.defineProperty(navigator, 'gpu', { value: undefined }); } catch(e) {}
-                }
-                if (window.SpeechRecognition || window.webkitSpeechRecognition) {
-                    window.SpeechRecognition = undefined;
-                    window.webkitSpeechRecognition = undefined;
-                }
-                if (window.speechSynthesis) {
-                    try { Object.defineProperty(window, 'speechSynthesis', { value: undefined }); } catch(e) {}
-                }
-
-                // --- 1. TIME & PERFORMANCE (Boring Clamp) ---
-                try {
-                    const TIME_PRECISION_MS = 100;
-                    const originalNow = Performance.prototype.now;
-                    Performance.prototype.now = makeNative(function() {
-                        return Math.floor(originalNow.call(this) / TIME_PRECISION_MS) * TIME_PRECISION_MS;
-                    }, 'now');
-                    
-                    const originalDateNow = Date.now;
-                    Date.now = makeNative(function() {
-                        return Math.floor(originalDateNow.call(Date) / TIME_PRECISION_MS) * TIME_PRECISION_MS;
-                    }, 'now');
-                } catch(e) {}
-
-                // --- 2. BATTERY API (Boring Standard) ---
-                try {
-                    const batteryMock = {
-                        charging: $batteryCharging,
-                        chargingTime: $batteryCharging ? 3600 : Infinity,
-                        dischargingTime: $batteryCharging ? Infinity : 18000,
-                        level: $roundedBatteryLevel,
-                        addEventListener: makeNative(() => {}, 'addEventListener'),
-                        removeEventListener: makeNative(() => {}, 'removeEventListener'),
-                    };
-                    navigator.getBattery = makeNative(() => Promise.resolve(batteryMock), 'getBattery');
-                } catch(e) {}
-
-                // --- 3. SCREEN & VIEWPORT ---
-                try {
-                    const lWidth = $logicWidth;
-                    const lHeight = $logicHeight;
-                    const screenProps = {
-                        width: lWidth, height: lHeight,
-                        availWidth: lWidth, availHeight: lHeight,
-                        colorDepth: 24, pixelDepth: 24
-                    };
-                    for (const prop in screenProps) {
-                        defineSafeProp(screen, prop, () => screenProps[prop]);
+                // --- CANVAS ---
+                function applyCanvasNoise(data) {
+                    for (let i = 0; i < data.length; i += 4) {
+                        data[i]     = clamp(data[i]     + getNoise(i,     3));
+                        data[i + 1] = clamp(data[i + 1] + getNoise(i + 1, 3));
+                        data[i + 2] = clamp(data[i + 2] + getNoise(i + 2, 3));
                     }
-                    defineSafeProp(window, 'innerHeight', () => lHeight);
-                    defineSafeProp(window, 'innerWidth', () => lWidth);
-                    defineSafeProp(window, 'outerHeight', () => lHeight);
-                    defineSafeProp(window, 'outerWidth', () => lWidth);
-                    defineSafeProp(window, 'devicePixelRatio', () => $pixelRatio);
-                } catch(e) {}
-                
-                // --- 4. NAVIGATOR & CLIENT HINTS ---
+                }
+
                 try {
-                    defineSafeProp(navigator, 'userAgent', () => '$userAgent');
-                    defineSafeProp(navigator, 'platform', () => '$platformString'); 
-                    defineSafeProp(navigator, 'vendor', () => ${if (persona.platform == "Android") "'Google Inc.'" else "'Apple Computer, Inc.'"});
-                    defineSafeProp(navigator, 'maxTouchPoints', () => ${if (persona.mobile) 5 else 0});
-                    defineSafeProp(navigator, 'hardwareConcurrency', () => 8);
-                    defineSafeProp(navigator, 'webdriver', () => false);
-                    defineSafeProp(navigator, 'doNotTrack', () => '${persona.doNotTrack}');
-                    defineSafeProp(navigator, 'deviceMemory', () => 8);
-                    defineSafeProp(navigator, 'pdfViewerEnabled', () => false);
-
-                    // Spoof Plugins (Chrome Android has 0 plugins normally)
-                    const emptyPluginArray = [];
-                    emptyPluginArray.item = makeNative(() => null, 'item');
-                    emptyPluginArray.namedItem = makeNative(() => null, 'namedItem');
-                    emptyPluginArray.refresh = makeNative(() => {}, 'refresh');
-                    defineSafeProp(navigator, 'plugins', () => emptyPluginArray);
-                    defineSafeProp(navigator, 'mimeTypes', () => emptyPluginArray);
-
-                    // Spoof WebGL GPU (Persona-specific)
-                    const getParameter = WebGLRenderingContext.prototype.getParameter;
-                    WebGLRenderingContext.prototype.getParameter = makeNative(function(parameter) {
-                        if (parameter === 37445) return '$gpuVendor';
-                        if (parameter === 37446) return '$gpuVendor';
-                        if (parameter === 37447) return '$gpuRenderer';
-                        return getParameter.apply(this, arguments);
-                    }, 'getParameter');
-
-                    if (typeof WebGL2RenderingContext !== 'undefined') {
-                        const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
-                        WebGL2RenderingContext.prototype.getParameter = makeNative(function(parameter) {
-                            if (parameter === 37445) return '$gpuVendor';
-                            if (parameter === 37446) return '$gpuVendor';
-                            if (parameter === 37447) return '$gpuRenderer';
-                            return getParameter2.apply(this, arguments);
-                        }, 'getParameter');
-                    }
-
-                    // Robust Client Hints Spoofing
-                    if (!navigator.userAgentData) {
+                    const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+                    CanvasRenderingContext2D.prototype.getImageData = makeNative(function() {
                         try {
-                            const UserAgentData = makeNative(function() {}, 'NavigatorUAData');
-                            const uad = new UserAgentData();
-                            Object.defineProperty(navigator, 'userAgentData', {
-                                value: uad, enumerable: true, configurable: true
+                            const imageData = origGetImageData.apply(this, arguments);
+                            applyCanvasNoise(imageData.data);
+                            return imageData;
+                        } catch(e) {
+                            return origGetImageData.apply(this, arguments);
+                        }
+                    }, 'getImageData');
+                } catch(e) {}
+
+                try {
+                    const origMeasureText = CanvasRenderingContext2D.prototype.measureText;
+                    CanvasRenderingContext2D.prototype.measureText = makeNative(function(text) {
+                        const metrics = origMeasureText.apply(this, arguments);
+                        try {
+                            const noise = getNoise(text.length * 7 + NOISE_SEED % 100, 0.3);
+                            Object.defineProperty(metrics, 'width', {
+                                value: metrics.width + noise,
+                                writable: false, configurable: true
                             });
                         } catch(e) {}
-                    }
-
-                    if (navigator.userAgentData) {
-                        const brands = [${persona.brands.joinToString(",") { "{brand: '${it.brand}', version: '${it.version}'}" }}];
-                        const highEntropyValues = {
-                            architecture: 'arm', bitness: '64', brands: brands,
-                            mobile: ${persona.mobile}, model: '${persona.model}',
-                            platform: '${persona.platform}', platformVersion: '${persona.platformVersion}',
-                        };
-                        
-                        // Override properties on the instance or prototype
-                        try {
-                            const proto = Object.getPrototypeOf(navigator.userAgentData);
-                            defineSafeProp(navigator.userAgentData, 'brands', () => brands);
-                            defineSafeProp(navigator.userAgentData, 'mobile', () => ${persona.mobile});
-                            defineSafeProp(navigator.userAgentData, 'platform', () => '${persona.platform}');
-                            
-                            navigator.userAgentData.getHighEntropyValues = makeNative((hints) => {
-                                if (!hints) return Promise.resolve(highEntropyValues);
-                                const result = {};
-                                hints.forEach(h => { if (highEntropyValues[h] !== undefined) result[h] = highEntropyValues[h]; });
-                                return Promise.resolve(result);
-                            }, 'getHighEntropyValues');
-                        } catch(e) {}
-                    }
-                } catch(e) {}
-                
-                // --- 5. LOCALE & TIMEZONE ---
-                try {
-                    const locale = '$language'; 
-                    defineSafeProp(navigator, 'language', () => locale);
-                    defineSafeProp(navigator, 'languages', () => ${persona.languages.joinToString(",", "[", "]") { "'$it'" }});
-                    
-                    const originalDTF = Intl.DateTimeFormat;
-                    Intl.DateTimeFormat = makeNative(function(locales, options) {
-                        options = options || {};
-                        if (!options.timeZone) options.timeZone = '$tzId';
-                        return new originalDTF([locale], options);
-                    }, 'DateTimeFormat');
-                    Intl.DateTimeFormat.prototype = originalDTF.prototype;
-                    
-                    Date.prototype.getTimezoneOffset = makeNative(function() { return $jsOffsetMinutes; }, 'getTimezoneOffset');
+                        return metrics;
+                    }, 'measureText');
                 } catch(e) {}
 
-                // --- 6. CANVAS & AUDIO (Surgical Seeded Noise) ---
-                try {
-                    const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-                    CanvasRenderingContext2D.prototype.getImageData = makeNative(function() {
-                        const imageData = originalGetImageData.apply(this, arguments);
-                        const buffer = imageData.data;
-                        // Imperceptible jitter on 1.5% of pixels
-                        for (let i = 0; i < buffer.length; i += 64) {
-                            if ((i + NOISE_SEED) % 71 === 0) {
-                                const channel = (i + NOISE_SEED) % 3;
-                                buffer[i + channel] = buffer[i + channel] ^ 1;
-                            }
-                        }
-                        return imageData;
-                    }, 'getImageData');
+                // --- WEBGL ---
+                const gpuVendor   = "$gpuVendor";
+                const gpuRenderer = "$gpuRenderer";
 
-                    if (window.OfflineAudioContext) {
-                        const OriginalOAC = OfflineAudioContext;
-                        window.OfflineAudioContext = makeNative(function(c, l, s) {
-                            const ctx = new OriginalOAC(c, l, s);
-                            const originalStartRendering = ctx.startRendering.bind(ctx);
-                            ctx.startRendering = makeNative(function() {
-                                return originalStartRendering().then(buffer => {
-                                    const channel = buffer.getChannelData(0);
-                                    for (let i = 0; i < channel.length; i += 100) {
-                                         const noise = ((NOISE_SEED + i) % 100) / 1000000.0;
-                                         channel[i] += noise;
+                function patchWebGL(proto) {
+                    try {
+                        const origGetParam = proto.getParameter;
+                        proto.getParameter = makeNative(function(param) {
+                            try {
+                                if (param === 0x9245) return gpuVendor;
+                                if (param === 0x9246) return gpuRenderer;
+                                if (param === 0x1F01) return "WebKit WebGL";
+                                if (param === 0x1F00) return "WebKit";
+                                return origGetParam.apply(this, arguments);
+                            } catch(e) { return origGetParam.apply(this, arguments); }
+                        }, 'getParameter');
+                    } catch(e) {}
+
+                    try {
+                        const origGetExtension = proto.getExtension;
+                        proto.getExtension = makeNative(function(name) {
+                            if (name === 'WEBGL_debug_renderer_info') return null;
+                            return origGetExtension.apply(this, arguments);
+                        }, 'getExtension');
+                    } catch(e) {}
+
+                    try {
+                        const origGetSupportedExtensions = proto.getSupportedExtensions;
+                        proto.getSupportedExtensions = makeNative(function() {
+                            const exts = origGetSupportedExtensions.apply(this, arguments) || [];
+                            return exts.filter(e => e !== 'WEBGL_debug_renderer_info');
+                        }, 'getSupportedExtensions');
+                    } catch(e) {}
+
+                    try {
+                        const origReadPixels = proto.readPixels;
+                        proto.readPixels = makeNative(function(x, y, width, height, format, type, pixels) {
+                            try {
+                                origReadPixels.apply(this, arguments);
+                                if (pixels instanceof Uint8Array) {
+                                    for (let i = 0; i < pixels.length; i += 4) {
+                                        pixels[i]     = clamp(pixels[i]     + getNoise(i,     3));
+                                        pixels[i + 1] = clamp(pixels[i + 1] + getNoise(i + 1, 3));
+                                        pixels[i + 2] = clamp(pixels[i + 2] + getNoise(i + 2, 3));
                                     }
-                                    return buffer;
-                                });
-                            }, 'startRendering');
-                            return ctx;
-                        }, 'OfflineAudioContext');
+                                }
+                            } catch(e) { origReadPixels.apply(this, arguments); }
+                        }, 'readPixels');
+                    } catch(e) {}
+
+                    try {
+                        const origGetShaderPrecisionFormat = proto.getShaderPrecisionFormat;
+                        proto.getShaderPrecisionFormat = makeNative(function() {
+                            try {
+                                const result = origGetShaderPrecisionFormat.apply(this, arguments);
+                                if (result) return { rangeMin: 127, rangeMax: 127, precision: 23 };
+                                return result;
+                            } catch(e) { return origGetShaderPrecisionFormat.apply(this, arguments); }
+                        }, 'getShaderPrecisionFormat');
+                    } catch(e) {}
+                }
+
+                if (window.WebGLRenderingContext)  patchWebGL(WebGLRenderingContext.prototype);
+                if (window.WebGL2RenderingContext) patchWebGL(WebGL2RenderingContext.prototype);
+
+                // --- AUDIO: Frequency data noise ---
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) {
+                        const origCreateAnalyser = AudioContext.prototype.createAnalyser;
+                        AudioContext.prototype.createAnalyser = makeNative(function() {
+                            const analyser = origCreateAnalyser.apply(this, arguments);
+                            const origGetFloatFrequencyData = analyser.getFloatFrequencyData.bind(analyser);
+                            analyser.getFloatFrequencyData = makeNative(function(array) {
+                                origGetFloatFrequencyData(array);
+                                for (let i = 0; i < array.length; i++) {
+                                    array[i] += getNoise(i, 0.1);
+                                }
+                            }, 'getFloatFrequencyData');
+                            return analyser;
+                        }, 'createAnalyser');
+                    }
+                } catch(e) {}
+
+                // --- SCREEN ---
+                try {
+                    const COMMON_W = [360, 400];
+                    const COMMON_H = [600, 700, 800, 900];
+                    const snap = (v, list) => list.reduce((p, c) => Math.abs(c - v) < Math.abs(p - v) ? c : p);
+                    
+                    // Logic Width/Height are already Persona-processed, but we snap to common real values
+                    const personaWidth  = $logicWidth;
+                    const personaHeight = $logicHeight;
+                    const isPortrait = personaWidth < personaHeight;
+
+                    const sW = isPortrait ? snap(personaWidth, COMMON_W) : snap(personaWidth, COMMON_H);
+                    const sH = isPortrait ? snap(personaHeight, COMMON_H) : snap(personaHeight, COMMON_W);
+
+                    Object.defineProperty(screen, 'width',       { get: makeNative(() => sW, 'get width'),       configurable: true });
+                    Object.defineProperty(screen, 'height',      { get: makeNative(() => sH, 'get height'),      configurable: true });
+                    Object.defineProperty(screen, 'availWidth',  { get: makeNative(() => sW, 'get availWidth'),  configurable: true });
+                    Object.defineProperty(screen, 'availHeight', { get: makeNative(() => sH, 'get availHeight'), configurable: true });
+                    Object.defineProperty(screen, 'colorDepth',  { get: makeNative(() => 24,                         'get colorDepth'),  configurable: true });
+                    Object.defineProperty(screen, 'pixelDepth',  { get: makeNative(() => 24,                         'get pixelDepth'),  configurable: true });
+                    Object.defineProperty(window, 'innerWidth',  { get: makeNative(() => sW, 'get innerWidth'),  configurable: true });
+                    Object.defineProperty(window, 'innerHeight', { get: makeNative(() => sH, 'get innerHeight'), configurable: true });
+                    Object.defineProperty(window, 'devicePixelRatio', { get: makeNative(() => $pixelRatio,      'get devicePixelRatio'), configurable: true });
+                    
+                    if (screen.orientation) {
+                        const type = isPortrait ? 'portrait-primary' : 'landscape-primary';
+                        Object.defineProperty(screen.orientation, 'type', { get: makeNative(() => type, 'get type'), configurable: true });
+                        Object.defineProperty(screen.orientation, 'angle', { get: makeNative(() => 0, 'get angle'), configurable: true });
+                    }
+                } catch(e) {}
+
+                // --- HARDWARE ---
+                try {
+                    Object.defineProperty(navigator, 'hardwareConcurrency', { get: makeNative(() => 4, 'get hardwareConcurrency'), configurable: true });
+                    Object.defineProperty(navigator, 'deviceMemory',        { get: makeNative(() => 4, 'get deviceMemory'),        configurable: true });
+                    Object.defineProperty(navigator, 'platform',            { get: makeNative(() => '$platformString', 'get platform'), configurable: true });
+                    Object.defineProperty(navigator, 'vendor',              { get: makeNative(() => 'Google Inc.', 'get vendor'), configurable: true });
+                    Object.defineProperty(navigator, 'userAgent',           { get: makeNative(() => '$userAgent', 'get userAgent'), configurable: true });
+                    
+                    if (normalizeLanguage) {
+                        Object.defineProperty(navigator, 'language',  { get: makeNative(() => '$language', 'get language'), configurable: true });
+                        Object.defineProperty(navigator, 'languages', { get: makeNative(() => $languages, 'get languages'), configurable: true });
                     }
                 } catch(e) {}
 
@@ -663,157 +642,61 @@ object FakeModeManager {
                     }
                 } catch(e) {}
 
-                // ===== ENHANCED AUDIOCONTEXT FINGERPRINTING =====
+                // --- AUDIO ---
                 try {
-                    if (window.AudioContext || window.webkitAudioContext) {
-                        const AC = window.AudioContext || window.webkitAudioContext;
-                        
-                        // Intercept createOscillator
-                        const originalCreateOscillator = AC.prototype.createOscillator;
-                        AC.prototype.createOscillator = makeNative(function() {
-                            const osc = originalCreateOscillator.call(this);
-                            // Add micro-jitter to frequency
-                            const originalFreqSet = Object.getOwnPropertyDescriptor(osc.frequency, 'value');
-                            if (originalFreqSet && originalFreqSet.set) {
-                                Object.defineProperty(osc.frequency, 'value', {
-                                    get: originalFreqSet.get,
-                                    set: function(v) {
-                                        // Add persona-seeded micro-jitter
-                                        const jitter = (prng() - 0.5) * 0.001;
-                                        originalFreqSet.set.call(this, v + jitter);
-                                    },
-                                    configurable: true
-                                });
-                            }
-                            return osc;
-                        }, 'createOscillator');
-
-                        // Intercept createAnalyser for getByteFrequencyData
-                        const originalCreateAnalyser = AC.prototype.createAnalyser;
-                        AC.prototype.createAnalyser = makeNative(function() {
-                            const analyser = originalCreateAnalyser.call(this);
-                            
-                            // Noise getFloatFrequencyData
-                            const originalGetFloatFrequencyData = analyser.getFloatFrequencyData;
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) {
+                        const origCreateAnalyser = AudioContext.prototype.createAnalyser;
+                        AudioContext.prototype.createAnalyser = makeNative(function() {
+                            const analyser = origCreateAnalyser.apply(this, arguments);
+                            const origGetFloat = analyser.getFloatFrequencyData.bind(analyser);
                             analyser.getFloatFrequencyData = makeNative(function(array) {
-                                originalGetFloatFrequencyData.call(this, array);
-                                // Add consistent persona-seeded noise
+                                origGetFloat(array);
                                 for (let i = 0; i < array.length; i++) {
-                                    array[i] += (prng() - 0.5) * 0.0001;
+                                    array[i] += getNoise(i, 0.1);
                                 }
                             }, 'getFloatFrequencyData');
-
-                            // Noise getByteFrequencyData
-                            const originalGetByteFrequencyData = analyser.getByteFrequencyData;
-                            analyser.getByteFrequencyData = makeNative(function(array) {
-                                originalGetByteFrequencyData.call(this, array);
-                                // Add subtle noise
-                                for (let i = 0; i < array.length; i += 8) {
-                                    if (prng() > 0.95) {
-                                        array[i] = Math.max(0, Math.min(255, array[i] + (prng() > 0.5 ? 1 : -1)));
-                                    }
-                                }
-                            }, 'getByteFrequencyData');
-
                             return analyser;
                         }, 'createAnalyser');
-
-                        // Intercept getChannelData
-                        const originalCreateBuffer = AC.prototype.createBuffer;
-                        AC.prototype.createBuffer = makeNative(function(numChannels, length, sampleRate) {
-                            const buffer = originalCreateBuffer.call(this, numChannels, length, sampleRate);
-                            const originalGetChannelData = buffer.getChannelData;
-                            buffer.getChannelData = makeNative(function(channel) {
-                                const data = originalGetChannelData.call(this, channel);
-                                // Add imperceptible noise
-                                for (let i = 0; i < data.length; i += 128) {
-                                    if (prng() > 0.99) {
-                                        data[i] += (prng() - 0.5) * 0.0000001;
-                                    }
-                                }
-                                return data;
-                            }, 'getChannelData');
-                            return buffer;
-                        }, 'createBuffer');
                     }
                 } catch(e) {}
 
-                // --- 8. WebRTC & SDP MUNGING (Privacy Hardening) ---
+                // --- WEBRTC ---
                 try {
                     if (window.RTCPeerConnection) {
                         const OriginalRPC = window.RTCPeerConnection;
-                        const mungeSDP = (sdp) => {
+                        const maskSDP = (sdp) => {
                             if (!sdp) return sdp;
-                            let lines = sdp.split('\r\n');
-                            
-                            // 1. Mask Local IP (Regex for LAN patterns)
-                            lines = lines.map(line => {
-                                if (line.startsWith('a=candidate') && (line.includes('192.168.') || line.includes('10.') || line.includes('172.'))) {
-                                    return line.replace(/(\s)(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)[^\s]+(\s)/, "$1$sessionLocalIp${"$"}{"4"}");
+                            return sdp.split('\r\n').map(line => {
+                                if (line.startsWith('a=candidate') &&
+                                   (line.includes('192.168.') || line.includes('10.') || line.includes('172.'))) {
+                                    return line.replace(/(\s)(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)[^\s]+(\s)/, '$1$sessionLocalIp${"$"}{"4"}');
                                 }
-                                if (line.startsWith('c=IN IP4') && (line.includes('192.168.') || line.includes('10.') || line.includes('172.'))) {
+                                if (line.startsWith('c=IN IP4') &&
+                                   (line.includes('192.168.') || line.includes('10.') || line.includes('172.'))) {
                                     return 'c=IN IP4 $sessionLocalIp';
                                 }
                                 return line;
-                            });
-
-                            // 2. Filter Verbose Codecs (AV1, H265) to match standard Chrome Mobile
-                            const forbiddenCodecs = ['AV1', 'H265', 'hevc', 'av01'];
-                            const forbiddenPayloadTypes = [];
-                            
-                            lines = lines.filter(line => {
-                                const rtpMatch = line.match(/^a=rtpmap:(\d+)\s+([^\/]+)/);
-                                if (rtpMatch) {
-                                    const pt = rtpMatch[1];
-                                    const codec = rtpMatch[2];
-                                    if (forbiddenCodecs.some(c => codec.toUpperCase().includes(c))) {
-                                        forbiddenPayloadTypes.push(pt);
-                                        return false;
-                                    }
-                                }
-                                return true;
-                            });
-
-                            // Remove secondary lines for forbidden payloads
-                            lines = lines.filter(line => {
-                                const fmtpMatch = line.match(/^a=(fmtp|rtcp-fb):(\d+)\s/);
-                                if (fmtpMatch && forbiddenPayloadTypes.includes(fmtpMatch[2])) {
-                                    return false;
-                                }
-                                return true;
-                            });
-
-                            return lines.join('\r\n');
+                            }).join('\r\n');
                         };
 
                         window.RTCPeerConnection = makeNative(function(config) {
                             const pc = new OriginalRPC(config);
-                            
-                            const wrapCreate = (original) => {
-                                return makeNative(function() {
-                                    return original.apply(this, arguments).then(desc => {
-                                        if (desc && desc.sdp) {
-                                            desc.sdp = mungeSDP(desc.sdp);
-                                        }
-                                        return desc;
-                                    });
-                                }, original.name);
-                            };
-
-                            pc.createOffer = wrapCreate(pc.createOffer);
-                            pc.createAnswer = wrapCreate(pc.createAnswer);
-
-                            const originalSetLocal = pc.setLocalDescription;
-                            pc.setLocalDescription = makeNative(function(desc) {
-                                if (desc && desc.sdp) {
-                                    desc.sdp = mungeSDP(desc.sdp);
-                                }
-                                return originalSetLocal.apply(this, arguments);
+                            const wrap = (fn) => makeNative(function() {
+                                return fn.apply(this, arguments).then(d => {
+                                    if (d && d.sdp) d.sdp = maskSDP(d.sdp);
+                                    return d;
+                                });
+                            }, fn.name);
+                            pc.createOffer  = wrap(pc.createOffer);
+                            pc.createAnswer = wrap(pc.createAnswer);
+                            const origSetLocal = pc.setLocalDescription;
+                            pc.setLocalDescription = makeNative(function(d) {
+                                if (d && d.sdp) d.sdp = maskSDP(d.sdp);
+                                return origSetLocal.apply(this, arguments);
                             }, 'setLocalDescription');
-
                             return pc;
                         }, 'RTCPeerConnection');
-                        
                         window.RTCPeerConnection.prototype = OriginalRPC.prototype;
                     }
                 } catch(e) {}
@@ -873,6 +756,30 @@ object FakeModeManager {
                             return original.apply(this, arguments);
                         }, 'submit');
                     })(HTMLFormElement.prototype.submit);
+                } catch(e) {}
+
+                // --- CLIENT HINTS ---
+                try {
+                    if (navigator.userAgentData) {
+                        const origGetHighEntropyValues = navigator.userAgentData.getHighEntropyValues;
+                        navigator.userAgentData.getHighEntropyValues = makeNative(function(hints) {
+                            return origGetHighEntropyValues.call(navigator.userAgentData, hints).then(values => {
+                                if (hints.includes('architecture')) values.architecture = 'arm';
+                                if (hints.includes('bitness'))     values.bitness      = '64';
+                                if (hints.includes('model'))       values.model        = 'Pixel 7a';
+                                if (hints.includes('platformVersion')) values.platformVersion = '13';
+                                return values;
+                            });
+                        }, 'getHighEntropyValues');
+                    }
+                } catch(e) {}
+
+                // --- HARDWARE & NAVIGATOR (Phase 2) ---
+                try {
+                    Object.defineProperty(navigator, 'hardwareConcurrency', { get: makeNative(() => 4, 'get hardwareConcurrency'), configurable: true });
+                    Object.defineProperty(navigator, 'deviceMemory',        { get: makeNative(() => 4, 'get deviceMemory'),        configurable: true });
+                    Object.defineProperty(navigator, 'webdriver',           { get: makeNative(() => false, 'get webdriver'),       configurable: true });
+                    Object.defineProperty(navigator, 'pdfViewerEnabled',    { get: makeNative(() => true, 'get pdfViewerEnabled'),  configurable: true });
                 } catch(e) {}
 
                 // --- 10. ANOMALY REPORTING BRIDGE ---
