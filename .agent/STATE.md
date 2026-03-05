@@ -1,3 +1,0 @@
-- **Current Progress**: Fixed Deployment Bug (Start Scripts) and completed Phase 2 (Secondary Vectors).
-- **Active Constraints**: Nearest-lookup screen snapping, forced en-US locale, addDocumentStartScript for modern devices.
-- **Immediate Next Step**: Begin Phase 3: Trie-based Network Tracker Blocking.
