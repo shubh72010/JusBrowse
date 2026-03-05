@@ -78,7 +78,7 @@ fun AirlockGallery(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
@@ -87,9 +87,8 @@ fun AirlockGallery(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
-                .blur(20.dp)
-                .background(Color.Black.copy(alpha = 0.45f))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -103,9 +102,9 @@ fun AirlockGallery(
             IconButton(
                 onClick = onClose,
                 modifier = Modifier.background(
-                    Color.White.copy(alpha = 0.08f),
+                    MaterialTheme.colorScheme.surfaceVariant,
                     CircleShape
-                ).border(0.5.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                ).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
@@ -122,8 +121,8 @@ fun AirlockGallery(
                     .fillMaxWidth()
                     .padding(16.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f))
-                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -288,7 +287,7 @@ private fun ImageGrid(
                     .clickable { onImageClick(images.indexOf(item)) },
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
                 AsyncImage(
@@ -330,7 +329,7 @@ private fun VideoList(
                     .clickable { onVideoClick(videos.indexOf(item)) },
                 shape = RoundedCornerShape(32.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
                 Row(
@@ -410,7 +409,7 @@ private fun AudioList(
                     .clickable { onAudioClick(audio.indexOf(item)) },
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp, 

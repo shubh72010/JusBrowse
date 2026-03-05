@@ -11,25 +11,49 @@ import java.io.InputStreamReader
  */
 class ContentBlocker(context: Context) {
     private val blockedDomains = HashSet<String>()
+    private val blockedPaths = mutableListOf<String>()
     private val blockCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     var customDohUrl: String = ""
 
     init {
+        loadRules(context, "adblock_list.txt")
+        loadRules(context, "easyprivacy.txt")
+    }
+
+    private fun loadRules(context: Context, fileName: String) {
         try {
-            val inputStream = context.assets.open("adblock_list.txt")
+            val inputStream = context.assets.open(fileName)
             val reader = BufferedReader(InputStreamReader(inputStream))
             var line: String? = reader.readLine()
             while (line != null) {
-                val domain = line.trim().lowercase()
-                if (domain.isNotEmpty() && !domain.startsWith("#")) {
-                    blockedDomains.add(domain)
+                val trimmedLine = line.trim()
+                if (trimmedLine.isNotEmpty() && !trimmedLine.startsWith("!") && !trimmedLine.startsWith("#")) {
+                    parseRule(trimmedLine)
                 }
                 line = reader.readLine()
             }
             reader.close()
-        } catch (e: Exception) {
-            // Layer 12: No debug logging in release - silently handle
-            // ProGuard strips all Log calls anyway
+        } catch (_: Exception) {}
+    }
+
+    private fun parseRule(rule: String) {
+        // Very basic ABP-style parser for JusBrowse
+        // Supports: ||domain^, /path/to/block, and raw domains
+        when {
+            rule.startsWith("||") -> {
+                val domain = rule.substring(2).substringBefore("^").lowercase()
+                if (domain.isNotEmpty()) blockedDomains.add(domain)
+            }
+            rule.startsWith("/") -> {
+                val path = rule.substringBefore("$").lowercase()
+                if (path.isNotEmpty()) blockedPaths.add(path)
+            }
+            else -> {
+                val clean = rule.substringBefore("$").lowercase()
+                if (clean.isNotEmpty() && clean.contains(".")) {
+                    blockedDomains.add(clean)
+                }
+            }
         }
     }
 
@@ -37,24 +61,11 @@ class ContentBlocker(context: Context) {
      * Suspend version for full check including CNAME uncloaking.
      */
     suspend fun shouldBlock(url: String, onTrackerBlocked: (String) -> Unit = {}): Boolean {
-        val uri = try {
-            Uri.parse(url)
-        } catch (e: Exception) {
-            return false
-        }
+        if (shouldBlockFast(url, onTrackerBlocked)) return true
         
+        val uri = try { Uri.parse(url) } catch (e: Exception) { return false }
         val host = uri.host?.lowercase() ?: return false
-        
-        // 0. Fast local cache check
-        blockCache[host]?.let { if (it) onTrackerBlocked(host); return it }
 
-        // 1. Check direct host/domain matches
-        if (isDomainBlocked(host)) {
-            blockCache[host] = true
-            onTrackerBlocked(host)
-            return true
-        }
-        
         // 2. CNAME Uncloaking: Only if host seems like a tracker or is a subdomain
         if (host.count { it == '.' } > 1) { 
             val cnameTarget = DnsResolver.resolveCname(host, customDohUrl)
@@ -65,7 +76,6 @@ class ContentBlocker(context: Context) {
             }
         }
         
-        blockCache[host] = false
         return false
     }
 
@@ -73,24 +83,30 @@ class ContentBlocker(context: Context) {
      * Synchronous version for WebView threads. Skips CNAME uncloaking if not cached.
      */
     fun shouldBlockFast(url: String, onTrackerBlocked: (String) -> Unit = {}): Boolean {
-        val uri = try {
-            Uri.parse(url)
-        } catch (e: Exception) {
-            return false
-        }
-        
+        val uri = try { Uri.parse(url) } catch (e: Exception) { return false }
         val host = uri.host?.lowercase() ?: return false
+        val path = uri.path?.lowercase() ?: ""
         
         // 1. Check local cache first
-        blockCache[host]?.let { if (it) onTrackerBlocked(host); return it }
+        blockCache["$host$path"]?.let { if (it) onTrackerBlocked(host); return it }
 
-        // 2. Check direct host/domain matches (very fast HashSet lookup)
+        // 2. Check path-based rules (EasyPrivacy)
+        for (blockedPath in blockedPaths) {
+            if (path.contains(blockedPath)) {
+                blockCache["$host$path"] = true
+                onTrackerBlocked("Path: $blockedPath")
+                return true
+            }
+        }
+
+        // 3. Check direct host/domain matches
         if (isDomainBlocked(host)) {
-            blockCache[host] = true
+            blockCache["$host$path"] = true
             onTrackerBlocked(host)
             return true
         }
 
+        blockCache["$host$path"] = false
         return false
     }
 

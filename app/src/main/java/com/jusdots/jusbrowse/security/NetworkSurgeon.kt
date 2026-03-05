@@ -25,22 +25,36 @@ object NetworkSurgeon {
         .build()
 
     private var cronetClient: OkHttpClient? = null
+    private var dohClient: OkHttpClient? = null
 
     private fun getClient(): Call.Factory {
         val engine = BrowserApplication.cronetEngine
         if (engine != null) {
             if (cronetClient == null) {
+                val bootstrapClient = OkHttpClient.Builder().build()
                 cronetClient = OkHttpClient.Builder()
                     .addInterceptor(CronetInterceptor.newBuilder(engine).build())
                     .cookieJar(GhostCookieJar)
                     .followRedirects(true)
                     .connectTimeout(15, TimeUnit.SECONDS)
                     .readTimeout(20, TimeUnit.SECONDS)
+                    .dns(DnsOverHttps(bootstrapClient))
                     .build()
             }
             return cronetClient!!
         }
-        return standardClient
+        
+        if (dohClient == null) {
+            val bootstrapClient = OkHttpClient.Builder().build()
+            dohClient = OkHttpClient.Builder()
+                .followRedirects(true)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .cookieJar(GhostCookieJar)
+                .dns(DnsOverHttps(bootstrapClient))
+                .build()
+        }
+        return dohClient!!
     }
 
     /**
@@ -63,12 +77,18 @@ object NetworkSurgeon {
         whitelist: List<String> = emptyList(), 
         userAgent: String? = null,
         httpsOnly: Boolean = false,
-        containerId: String = "default"
+        containerId: String = "default",
+        contentBlocker: ContentBlocker? = null
     ): WebResourceResponse? {
         val requestUrl = request?.url ?: return null
         val url = requestUrl.toString()
         val host = requestUrl.host ?: ""
         val path = requestUrl.path ?: ""
+
+        // Phase 0: Content Blocking with Neutral Response
+        if (contentBlocker?.shouldBlockFast(url) == true) {
+            return getNeutralResponse(url)
+        }
 
         // Phase 1: HTTPS-only enforcement (Consolidated)
         if (httpsOnly && url.startsWith("http://")) {
@@ -135,7 +155,13 @@ object NetworkSurgeon {
             )
 
             sortedKeys.forEach { key ->
-                val value = originalHeaders[key] ?: originalHeaders[key.lowercase()]
+                var value = originalHeaders[key] ?: originalHeaders[key.lowercase()]
+                
+                // Phase 2.5: Force en-US for privacy clustering
+                if (key.equals("Accept-Language", ignoreCase = true)) {
+                    value = "en-US,en;q=0.9"
+                }
+
                 if (value != null) builder.header(key, value)
             }
 
@@ -217,5 +243,22 @@ object NetworkSurgeon {
                 ByteArrayInputStream("".toByteArray())
             )
         }
+    }
+
+    /**
+     * Returns a content-type appropriate empty response to "cloak" the block.
+     * Prevents JS from detecting adblock via script loading errors.
+     */
+    private fun getNeutralResponse(url: String): WebResourceResponse {
+        val extension = url.substringAfterLast('.', "").substringBefore('?').lowercase()
+        val (mimeType, content) = when (extension) {
+            "js" -> "application/javascript" to "/* Blocked by JusBrowse */"
+            "css" -> "text/css" to "/* Blocked */"
+            "png", "jpg", "jpeg", "gif", "webp" -> "image/gif" to "" // 0-byte or transparent 1x1 handled by WebView if empty
+            else -> "text/plain" to ""
+        }
+        
+        val inputStream = ByteArrayInputStream(content.toByteArray())
+        return WebResourceResponse(mimeType, "UTF-8", 200, "OK", emptyMap(), inputStream)
     }
 }

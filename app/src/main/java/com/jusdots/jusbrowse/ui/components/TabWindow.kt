@@ -613,7 +613,7 @@ fun TabWindow(
                                     } else if (jusFakeEnabled) {
                                         com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent()
                                             ?: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36"
-                                    } else null
+                                    } else "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36"
 
                                     if (targetUA != null) {
                                         settings.userAgentString = targetUA
@@ -638,6 +638,9 @@ fun TabWindow(
                                         whitelist = protectionWhitelist.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                                     )
 
+                                    android.util.Log.d("JusBrowse", "DOCUMENT_START_SCRIPT supported: ${androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)}")
+                                    android.util.Log.d("JusBrowse", "FP Script mode: jusFake=$jusFakeEnabled boring=$boringEnabled default=${!jusFakeEnabled && !boringEnabled}")
+
                                     if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
                                         androidx.webkit.WebViewCompat.addDocumentStartJavaScript(this, fpScript, setOf("*"))
                                     }
@@ -651,8 +654,6 @@ fun TabWindow(
                                         com.jusdots.jusbrowse.security.FakeModeManager.PrivacyBridge(),
                                         com.jusdots.jusbrowse.security.FakeModeManager.bridgeNamePrivacy
                                     )
-
-                                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
 
                                     if (tab.isPrivate) {
                                         PrivateBrowsingManager.configurePrivateWebView(this)
@@ -696,10 +697,8 @@ fun TabWindow(
                                             // 1. Reset suspicion score on each new request
                                             com.jusdots.jusbrowse.security.SuspicionScorer.reset()
 
-                                            // 2. Ad Block / Tracker Block
-                                            if (adBlockEnabled && viewModel.contentBlocker.shouldBlockFast(url)) {
-                                                return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
-                                            }
+                                            // 2. Ad Block / Tracker Block (handled inside NetworkSurgeon in Phase 3 for Neutral Responses)
+                                            // We skip explicit shouldBlockFast here to let the Surgeon handle it with a Neutral Response.
 
                                             // 3. Phase 3: The Surgeon: Strip X-Requested-With (and handle HTTPS-only)
                                             val whitelistedDomains = protectionWhitelist.split(",").map { it.trim() }.filter { it.isNotEmpty() }
@@ -713,7 +712,8 @@ fun TabWindow(
                                             }
 
                                             val containerId = if (tab.isPrivate) "private_${tab.id}" else tab.containerId
-                                            val surgicallyCleanedResponse = NetworkSurgeon.intercept(request, whitelistedDomains, currentUA, httpsOnly, containerId)
+                                            val blocker = if (adBlockEnabled) viewModel.contentBlocker else null
+                                            val surgicallyCleanedResponse = NetworkSurgeon.intercept(request, whitelistedDomains, currentUA, httpsOnly, containerId, blocker)
                                             if (surgicallyCleanedResponse != null) {
                                                 return surgicallyCleanedResponse
                                             }
@@ -722,6 +722,16 @@ fun TabWindow(
                                         }
 
                                         override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                            super.onPageStarted(view, url, favicon)
+                                            if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                                                view?.evaluateJavascript(com.jusdots.jusbrowse.security.FakeModeManager.generateFingerprintScript(
+                                                    webViewVersion = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "133.0.0.0",
+                                                    defaultEnabled = !jusFakeEnabled && !boringEnabled,
+                                                    jusFakeEnabled = jusFakeEnabled,
+                                                    boringEnabled = boringEnabled,
+                                                    whitelist = protectionWhitelist.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                                                ), null)
+                                            }
                                             url?.let { currentUrl ->
                                                 val shouldDisableJS = currentUrl.startsWith("about:") || currentUrl.startsWith("file://") || currentUrl.startsWith("content://")
                                                 if (shouldDisableJS) {
@@ -767,28 +777,27 @@ fun TabWindow(
                                 webView.evaluateJavascript(com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.DISABLE_BOOMER_MODE_SCRIPT, null)
                             }
                             
-                            // Advanced Privacy: Re-apply UserAgentMetadata if engine state changed
-                            val webViewVersion = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(webView.context)?.versionName ?: "145.0.0.0"
-                            val metadata = if (boringEnabled) {
-                                com.jusdots.jusbrowse.security.BoringEngine.getUserAgentMetadata(webViewVersion)
+                            // Advanced Privacy: Handle dynamic UA/Metadata updates if engine state changed
+                            val wvVersion = androidx.webkit.WebViewCompat.getCurrentWebViewPackage(webView.context)?.versionName ?: "133.0.0.0"
+                            val targetUA = when {
+                                tab.isDesktopMode -> com.jusdots.jusbrowse.ui.viewmodel.BrowserViewModel.DESKTOP_USER_AGENT
+                                boringEnabled -> com.jusdots.jusbrowse.security.BoringEngine.getFormattedUserAgent(wvVersion)
+                                jusFakeEnabled -> com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent()
+                                else -> "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36"
+                            }
+
+                            if (webView.settings.userAgentString != targetUA) {
+                                webView.settings.userAgentString = targetUA
+                            }
+
+                            val currentMetadata = if (boringEnabled) {
+                                com.jusdots.jusbrowse.security.BoringEngine.getUserAgentMetadata(wvVersion)
                             } else if (jusFakeEnabled) {
                                 com.jusdots.jusbrowse.security.FakeModeManager.getUserAgentMetadata()
                             } else null
 
-                            if (metadata != null && WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
-                                WebSettingsCompat.setUserAgentMetadata(webView.settings, metadata)
-                            }
-                            
-                            // Re-apply UA String
-                            val targetUA = if (boringEnabled) {
-                                com.jusdots.jusbrowse.security.BoringEngine.getFormattedUserAgent(webViewVersion)
-                            } else if (jusFakeEnabled) {
-                                com.jusdots.jusbrowse.security.FakeModeManager.getUserAgent() 
-                                    ?: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36"
-                            } else null
-                            
-                            if (targetUA != null && webView.settings.userAgentString != targetUA) {
-                                webView.settings.userAgentString = targetUA
+                            if (currentMetadata != null && androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
+                                androidx.webkit.WebSettingsCompat.setUserAgentMetadata(webView.settings, currentMetadata)
                             }
                             
                             siteSettings?.let { settings ->

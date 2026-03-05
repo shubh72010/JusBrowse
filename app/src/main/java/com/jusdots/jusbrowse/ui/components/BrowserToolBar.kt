@@ -72,12 +72,6 @@ fun BrowserToolBar(
                         )
                     }
 
-                    IconButton(
-                        onClick = { viewModel.createNewTab() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(Icons.Default.Home, "Home")
-                    }
 
                     IconButton(
                         onClick = { viewModel.toggleMultiViewMode() },
@@ -104,17 +98,6 @@ fun BrowserToolBar(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
-                        DropdownMenuItem(
-                            text = { Text(if (currentTab?.isDesktopMode == true) "Mobile Site" else "Desktop Site") },
-                            onClick = {
-                                if (currentTab != null) {
-                                    viewModel.toggleDesktopMode(currentTab.id)
-                                    viewModel.getWebView(currentTab.id)?.reload()
-                                }
-                                showMenu = false
-                            },
-                            leadingIcon = { Icon(if (currentTab?.isDesktopMode == true) Icons.Default.Smartphone else Icons.Default.Laptop, null) }
-                        )
                         DropdownMenuItem(
                             text = { Text("History") },
                             onClick = {

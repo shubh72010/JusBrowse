@@ -58,34 +58,45 @@ object BoringEngine {
      * Generate the "Boring" injection script.
      * @param sessionSeed A persistent seed for this session.
      */
-    fun generateScript(sessionSeed: Long, webViewVersion: String): String {
+    fun generateScript(sessionSeed: Long, webViewVersion: String, normalizeLanguage: Boolean = true): String {
         return """
             (function() {
                 'use strict';
                 
                 const SESSION_SEED = $sessionSeed;
                 
-                // --- CORE: Mulberry32 Deterministic PRNG ---
-                const prng = (function(seed) {
-                    return function() {
-                        let t = seed += 0x6D2B79F5;
-                        t = Math.imul(t ^ t >>> 15, t | 1);
-                        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-                        return ((t ^ t >>> 14) >>> 0) / 4294967296;
-                    };
-                })(SESSION_SEED);
+                // --- PRNG: Improved seeded random for noise ---
+                function seededRandom(index) {
+                    let x = SESSION_SEED ^ (index * 1664525 + 1013904223);
+                    x = ((x >> 16) ^ x) * 0x45d9f3b;
+                    x = ((x >> 16) ^ x) * 0x45d9f3b;
+                    x = (x >> 16) ^ x;
+                    return (x & 0xFF);
+                }
 
-                // --- UTILS: Native Function Masquerade ---
+                function getNoise(index, magnitude) {
+                    return ((seededRandom(index) / 255) - 0.5) * 2 * magnitude;
+                }
+
+                function clamp(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+
+                // --- NATIVE FUNCTION MASQUERADE ---
                 const originalToString = Function.prototype.toString;
                 const fakeToStringSymbol = Symbol('fakeToString');
-                
+
                 const makeNative = (fn, name) => {
                     if (name) {
                         try { Object.defineProperty(fn, 'name', { value: name, configurable: true }); } catch(e) {}
                     }
-                    const nativeString = `function ${"$"}{name || fn.name || ''}() { [native code] }`;
-                    fn[fakeToStringSymbol] = nativeString;
+                    fn[fakeToStringSymbol] = `function ${'$'}{name || fn.name || ''}() { [native code] }`;
                     return fn;
+                };
+
+                const defineSafeProp = (obj, prop, get) => {
+                    Object.defineProperty(obj, prop, {
+                        get: makeNative(get, `get ${'$'}{prop}`),
+                        configurable: true
+                    });
                 };
 
                 Function.prototype.toString = makeNative(function() {
@@ -95,217 +106,268 @@ object BoringEngine {
                     return originalToString.call(this);
                 }, 'toString');
 
-                const defineSafeProp = (obj, prop, getter) => {
-                    Object.defineProperty(obj, prop, {
-                        get: makeNative(getter, 'get ' + prop),
-                        enumerable: true,
-                        configurable: true
-                    });
-                };
-
-                // --- PILLAR 4: GATING (API Occlusion) ---
-                
-                // WebGPU Removal
-                if (navigator.gpu) {
-                    try { Object.defineProperty(navigator, 'gpu', { value: undefined }); } catch(e) {}
+                // --- CANVAS ---
+                function applyCanvasNoise(data) {
+                    for (let i = 0; i < data.length; i += 4) {
+                        data[i]     = clamp(data[i]     + getNoise(i,     3));
+                        data[i + 1] = clamp(data[i + 1] + getNoise(i + 1, 3));
+                        data[i + 2] = clamp(data[i + 2] + getNoise(i + 2, 3));
+                    }
                 }
 
-                // WebSpeech Removal (Instruments we cannot safely spoof yet)
-                if (window.SpeechRecognition || window.webkitSpeechRecognition) {
-                    window.SpeechRecognition = undefined;
-                    window.webkitSpeechRecognition = undefined;
-                }
-                if (window.speechSynthesis) {
-                    try { Object.defineProperty(window, 'speechSynthesis', { value: undefined }); } catch(e) {}
-                }
-
-                // --- 2. CANVAS API (Seeded Drift) ---
                 try {
-                    const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-                    CanvasRenderingContext2D.prototype.getImageData = makeNative(function(x, y, w, h) {
-                        const imageData = originalGetImageData.apply(this, arguments);
-                        const buffer = imageData.data;
-                        for (let i = 0; i < buffer.length; i += 4) {
-                            if ((i + SESSION_SEED) % 103 === 0) { 
-                                const channel = (i + SESSION_SEED) % 3;
-                                const val = buffer[i + channel];
-                                if (val > 0 && val < 255) {
-                                     buffer[i + channel] = val + ((SESSION_SEED % 2 === 0) ? 1 : -1);
-                                }
-                            }
+                    const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+                    CanvasRenderingContext2D.prototype.getImageData = makeNative(function() {
+                        try {
+                            const imageData = origGetImageData.apply(this, arguments);
+                            applyCanvasNoise(imageData.data);
+                            return imageData;
+                        } catch(e) {
+                            return origGetImageData.apply(this, arguments);
                         }
-                        return imageData;
                     }, 'getImageData');
                 } catch(e) {}
 
-                // --- 3. AUDIO CONTEXT (Seeded Drift) ---
                 try {
-                    if (window.OfflineAudioContext) {
-                        const OriginalOAC = OfflineAudioContext;
-                        window.OfflineAudioContext = makeNative(function(c, l, s) {
-                            const ctx = new OriginalOAC(c, l, s);
-                            const originalStartRendering = ctx.startRendering.bind(ctx);
-                            ctx.startRendering = makeNative(function() {
-                                return originalStartRendering().then(buffer => {
-                                    const channel = buffer.getChannelData(0);
-                                    for (let i = 0; i < channel.length; i+=100) {
-                                         const seedOffset = (SESSION_SEED + i) * 1664525 + 1013904223;
-                                         const noise = (seedOffset % 100) / 1000000.0;
-                                         channel[i] += noise;
+                    const origMeasureText = CanvasRenderingContext2D.prototype.measureText;
+                    CanvasRenderingContext2D.prototype.measureText = makeNative(function(text) {
+                        const metrics = origMeasureText.apply(this, arguments);
+                        try {
+                            const noise = getNoise(text.length * 7, 0.3);
+                            Object.defineProperty(metrics, 'width', {
+                                value: metrics.width + noise,
+                                writable: false, configurable: true
+                            });
+                        } catch(e) {}
+                        return metrics;
+                    }, 'measureText');
+                } catch(e) {}
+
+                // --- WEBGL ---
+                const FAKE_VENDOR   = "Google Inc. (ARM)";
+                const FAKE_RENDERER = "ANGLE (ARM, Mali-G715, OpenGL ES 3.2)";
+
+                function patchWebGL(proto) {
+                    try {
+                        const origGetParam = proto.getParameter;
+                        proto.getParameter = makeNative(function(param) {
+                            try {
+                                if (param === 0x9245) return FAKE_VENDOR;
+                                if (param === 0x9246) return FAKE_RENDERER;
+                                if (param === 0x1F01) return "WebKit WebGL";
+                                if (param === 0x1F00) return "WebKit";
+                                return origGetParam.apply(this, arguments);
+                            } catch(e) { return origGetParam.apply(this, arguments); }
+                        }, 'getParameter');
+                    } catch(e) {}
+
+                    try {
+                        const origGetExtension = proto.getExtension;
+                        proto.getExtension = makeNative(function(name) {
+                            if (name === 'WEBGL_debug_renderer_info') return null;
+                            return origGetExtension.apply(this, arguments);
+                        }, 'getExtension');
+                    } catch(e) {}
+
+                    try {
+                        const origGetSupportedExtensions = proto.getSupportedExtensions;
+                        proto.getSupportedExtensions = makeNative(function() {
+                            const exts = origGetSupportedExtensions.apply(this, arguments) || [];
+                            return exts.filter(e => e !== 'WEBGL_debug_renderer_info');
+                        }, 'getSupportedExtensions');
+                    } catch(e) {}
+
+                    try {
+                        const origReadPixels = proto.readPixels;
+                        proto.readPixels = makeNative(function(x, y, width, height, format, type, pixels) {
+                            try {
+                                origReadPixels.apply(this, arguments);
+                                if (pixels instanceof Uint8Array) {
+                                    for (let i = 0; i < pixels.length; i += 4) {
+                                        pixels[i]     = clamp(pixels[i]     + getNoise(i,     3));
+                                        pixels[i + 1] = clamp(pixels[i + 1] + getNoise(i + 1, 3));
+                                        pixels[i + 2] = clamp(pixels[i + 2] + getNoise(i + 2, 3));
                                     }
-                                    return buffer;
-                                });
-                            }, 'startRendering');
-                            return ctx;
-                        }, 'OfflineAudioContext');
-                        window.OfflineAudioContext.prototype = OriginalOAC.prototype;
+                                }
+                            } catch(e) { origReadPixels.apply(this, arguments); }
+                        }, 'readPixels');
+                    } catch(e) {}
+
+                    try {
+                        const origGetShaderPrecisionFormat = proto.getShaderPrecisionFormat;
+                        proto.getShaderPrecisionFormat = makeNative(function() {
+                            try {
+                                const result = origGetShaderPrecisionFormat.apply(this, arguments);
+                                if (result) return { rangeMin: 127, rangeMax: 127, precision: 23 };
+                                return result;
+                            } catch(e) { return origGetShaderPrecisionFormat.apply(this, arguments); }
+                        }, 'getShaderPrecisionFormat');
+                    } catch(e) {}
+                }
+
+                if (window.WebGLRenderingContext)  patchWebGL(WebGLRenderingContext.prototype);
+                if (window.WebGL2RenderingContext) patchWebGL(WebGL2RenderingContext.prototype);
+
+                // --- AUDIO ---
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) {
+                        const origCreateAnalyser = AudioContext.prototype.createAnalyser;
+                        AudioContext.prototype.createAnalyser = makeNative(function() {
+                            const analyser = origCreateAnalyser.apply(this, arguments);
+                            const origGetFloat = analyser.getFloatFrequencyData.bind(analyser);
+                            analyser.getFloatFrequencyData = makeNative(function(array) {
+                                origGetFloat(array);
+                                for (let i = 0; i < array.length; i++) {
+                                    array[i] += getNoise(i, 0.1);
+                                }
+                            }, 'getFloatFrequencyData');
+                            return analyser;
+                        }, 'createAnalyser');
                     }
                 } catch(e) {}
 
-                // --- LAYER 1: CONTEXT AWARENESS ---
-                let lastScrollTime = 0;
-                window.addEventListener('scroll', () => { lastScrollTime = Date.now(); }, { passive: true });
-                
-                // Track call frequency for fingerprinting detection
-                const callLog = new Map();
-                const isHighFrequency = (prop) => {
-                    const now = Date.now();
-                    const log = callLog.get(prop) || [];
-                    const recent = log.filter(t => now - t < 1000);
-                    recent.push(now);
-                    callLog.set(prop, recent);
-                    return recent.length > 15; // >15 calls per second is suspicious
-                };
-
-                const getContextualDrift = (el, prop, drift) => {
-                    const now = Date.now();
-                    const isScrolling = (now - lastScrollTime) < 800;
-                    
-                    // If we're scrolling and it's a normal frequency call, give clean values
-                    // This fixes Kaggle, Notion, and BuiltWith layout engines.
-                    if (isScrolling && !isHighFrequency(prop)) {
-                        return 0;
-                    }
-                    
-                    // If element is hidden or call is high frequency, it's likely fingerprinting.
-                    // Keep the protective drift.
-                    if (el && el.isConnected) {
-                        try {
-                            // Use native style lookup to avoid recursion
-                            const style = window.getComputedStyle(el);
-                            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
-                                return drift;
-                            }
-                        } catch(e) {}
-                    }
-                    
-                    return drift;
-                };
-
-                const driftX = (SESSION_SEED % 100) / 4000.0; // +/- 0.025px
-                const driftY = ((SESSION_SEED >> 4) % 100) / 4000.0;
-
-                // getBoundingClientRect
+                // --- SCREEN & VIEWPORT (Synchronized Dynamic Bucketing) ---
                 try {
-                    const lWidth = 412;   // Pixel 7a logical width (1080 / 2.625)
-                    const lHeight = 915;  // Pixel 7a logical height (2400 / 2.625)
-                    const originalGetBCR = Element.prototype.getBoundingClientRect;
-                    Element.prototype.getBoundingClientRect = makeNative(function() {
-                        const rect = originalGetBCR.apply(this, arguments);
-                        const dx = getContextualDrift(this, 'bcr', driftX);
-                        const dy = getContextualDrift(this, 'bcr', driftY);
+                    const COMMON_W = [360, 400];
+                    const COMMON_H = [600, 700, 800, 900];
+                    const snap = (v, list) => list.reduce((p, c) => Math.abs(c - v) < Math.abs(p - v) ? c : p);
+
+                    // Capture raw values BEFORE overrides to prevent infinite recursion
+                    const rawWidth = window.screen.width;
+                    const rawHeight = window.screen.height;
+                    const rawAvailWidth = window.screen.availWidth;
+                    const rawAvailHeight = window.screen.availHeight;
+                    const rawInnerWidth = window.innerWidth;
+                    const rawInnerHeight = window.innerHeight;
+                    const rawOuterWidth = window.outerWidth;
+                    const rawOuterHeight = window.outerHeight;
+
+                    const getMetrics = () => {
+                        const isPortrait = rawWidth < rawHeight;
+                        const sW = isPortrait ? snap(rawWidth, COMMON_W) : snap(rawWidth, COMMON_H);
+                        const sH = isPortrait ? snap(rawHeight, COMMON_H) : snap(rawHeight, COMMON_W);
+                        
+                        // Maintain aspect ratio for viewport/inner metrics relative to screen
+                        const ratioW = rawInnerWidth / (rawWidth || 1);
+                        const ratioH = rawInnerHeight / (rawHeight || 1);
                         
                         return {
-                           x: rect.x + dx, y: rect.y + dy,
-                           width: rect.width, height: rect.height,
-                           top: rect.top + dy, right: rect.right + dx,
-                           bottom: rect.bottom + dy, left: rect.left + dx,
-                           toJSON: () => JSON.stringify(this)
+                            width: sW,
+                            height: sH,
+                            availWidth: sW,
+                            availHeight: sH,
+                            innerWidth: Math.round(sW * ratioW),
+                            innerHeight: Math.round(sH * ratioH),
+                            outerWidth: sW,
+                            outerHeight: sH,
+                            type: isPortrait ? 'portrait-primary' : 'landscape-primary'
                         };
-                    }, 'getBoundingClientRect');
-
-                    // Screen/Viewport Mocking
-                    const screenProps = {
-                        width: lWidth, height: lHeight,
-                        availWidth: lWidth, availHeight: lHeight,
-                        colorDepth: 24, pixelDepth: 24
                     };
-                    for (const prop in screenProps) {
-                        defineSafeProp(screen, prop, () => screenProps[prop]);
-                    }
-                    defineSafeProp(window, 'innerHeight', () => lHeight);
-                    defineSafeProp(window, 'innerWidth', () => lWidth);
-                    defineSafeProp(window, 'outerHeight', () => lHeight);
-                    defineSafeProp(window, 'outerWidth', () => lWidth);
-                } catch(e) {}
 
-                // getComputedStyle (Drift on computed dimensions)
-                try {
-                    const originalGCS = window.getComputedStyle;
-                    window.getComputedStyle = makeNative(function(el, pseudo) {
-                        const style = originalGCS.call(window, el, pseudo);
-                        if (!style) return style;
-                        
-                        const proxy = new Proxy(style, {
-                            get(target, prop) {
-                                const val = target[prop];
-                                if ((prop === 'width' || prop === 'height' || prop === 'top' || prop === 'left') && typeof val === 'string' && val.endsWith('px')) {
-                                    const numeric = parseFloat(val);
-                                    const rawDrift = (prop === 'width' || prop === 'left') ? driftX : driftY;
-                                    const drift = getContextualDrift(el, 'gcs', rawDrift);
-                                    return (numeric + drift) + 'px';
-                                }
-                                return typeof val === 'function' ? val.bind(target) : val;
-                            }
+                    const metrics = getMetrics();
+
+                    const props = ['width', 'height', 'availWidth', 'availHeight'];
+                    props.forEach(prop => {
+                        Object.defineProperty(screen, prop, {
+                            get: makeNative(() => metrics[prop], `get ${'$'}{prop}`),
+                            configurable: true
                         });
-                        return proxy;
-                    }, 'getComputedStyle');
+                    });
+
+                    // Zero out multi-monitor offsets
+                    ['availLeft', 'availTop', 'left', 'top'].forEach(prop => {
+                        Object.defineProperty(screen, prop, { get: makeNative(() => 0, `get ${'$'}{prop}`), configurable: true });
+                    });
+
+                    Object.defineProperty(screen, 'colorDepth', { get: makeNative(() => 24, 'get colorDepth'), configurable: true });
+                    Object.defineProperty(screen, 'pixelDepth', { get: makeNative(() => 24, 'get pixelDepth'), configurable: true });
+
+                    const winProps = ['innerWidth', 'innerHeight', 'outerWidth', 'outerHeight'];
+                    winProps.forEach(prop => {
+                        Object.defineProperty(window, prop, {
+                            get: makeNative(() => metrics[prop], `get ${'$'}{prop}`),
+                            configurable: true
+                        });
+                    });
+
+                    if (screen.orientation) {
+                        defineSafeProp(screen.orientation, 'type', () => metrics.type);
+                        defineSafeProp(screen.orientation, 'angle', () => 0);
+                    }
+
+                    if (window.visualViewport) {
+                        ['width', 'height'].forEach(prop => {
+                            Object.defineProperty(window.visualViewport, prop, {
+                                get: makeNative(() => metrics[prop === 'width' ? 'innerWidth' : 'innerHeight'], `get ${'$'}{prop}`),
+                                configurable: true
+                            });
+                        });
+                        ['scale'].forEach(prop => {
+                            Object.defineProperty(window.visualViewport, prop, { get: makeNative(() => 1, `get ${'$'}{prop}`), configurable: true });
+                        });
+                    }
                 } catch(e) {}
 
-
-                // --- 5. BATTERY (Session Fixed) ---
+                // --- HARDWARE ---
                 try {
-                    if (navigator.getBattery) {
-                        const level = 0.20 + ((SESSION_SEED % 70) / 100.0);
-                        const charging = (SESSION_SEED % 2) === 0;
-                        const mockBattery = {
-                            level: level, charging: charging,
-                            chargingTime: charging ? 3600 : Infinity,
-                            dischargingTime: charging ? Infinity : 18000,
-                            addEventListener: makeNative(() => {}, 'addEventListener'),
-                            removeEventListener: makeNative(() => {}, 'removeEventListener'),
+                    Object.defineProperty(navigator, 'hardwareConcurrency', { get: makeNative(() => 4, 'get hardwareConcurrency'), configurable: true });
+                    Object.defineProperty(navigator, 'deviceMemory',        { get: makeNative(() => 4, 'get deviceMemory'),        configurable: true });
+                    Object.defineProperty(navigator, 'platform',            { get: makeNative(() => 'Linux armv8l', 'get platform'), configurable: true });
+                    Object.defineProperty(navigator, 'webdriver',           { get: makeNative(() => false, 'get webdriver'),       configurable: true });
+                    Object.defineProperty(navigator, 'pdfViewerEnabled',    { get: makeNative(() => true, 'get pdfViewerEnabled'),  configurable: true });
+                    if ($normalizeLanguage) {
+                        Object.defineProperty(navigator, 'language',  { get: makeNative(() => 'en-US', 'get language'), configurable: true });
+                        Object.defineProperty(navigator, 'languages', { get: makeNative(() => ['en-US', 'en'], 'get languages'), configurable: true });
+                    }
+                } catch(e) {}
+
+                // --- API OCCLUSION ---
+                try { if (navigator.gpu) Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true }); } catch(e) {}
+                try { window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined; } catch(e) {}
+                try { Object.defineProperty(window, 'speechSynthesis', { value: undefined, configurable: true }); } catch(e) {}
+
+                // --- WEBRTC ---
+                try {
+                    if (window.RTCPeerConnection) {
+                        const OriginalRPC = window.RTCPeerConnection;
+                        const maskSDP = (sdp) => {
+                            if (!sdp) return sdp;
+                            return sdp.split('\r\n').map(line => {
+                                if (line.startsWith('a=candidate') &&
+                                   (line.includes('192.168.') || line.includes('10.') || line.includes('172.'))) {
+                                    return line.replace(/(\s)(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)[^\s]+(\s)/, '$1192.168.1.1$4');
+                                }
+                                if (line.startsWith('c=IN IP4') &&
+                                   (line.includes('192.168.') || line.includes('10.') || line.includes('172.'))) {
+                                    return 'c=IN IP4 192.168.1.1';
+                                }
+                                return line;
+                            }).join('\r\n');
                         };
-                        navigator.getBattery = makeNative(() => Promise.resolve(mockBattery), 'getBattery');
+
+                        window.RTCPeerConnection = makeNative(function(config) {
+                            const pc = new OriginalRPC(config);
+                            const wrap = (fn) => makeNative(function() {
+                                return fn.apply(this, arguments).then(d => {
+                                    if (d && d.sdp) d.sdp = maskSDP(d.sdp);
+                                    return d;
+                                });
+                            }, fn.name);
+                            pc.createOffer  = wrap(pc.createOffer);
+                            pc.createAnswer = wrap(pc.createAnswer);
+                            const origSetLocal = pc.setLocalDescription;
+                            pc.setLocalDescription = makeNative(function(d) {
+                                if (d && d.sdp) d.sdp = maskSDP(d.sdp);
+                                return origSetLocal.apply(this, arguments);
+                            }, 'setLocalDescription');
+                            return pc;
+                        }, 'RTCPeerConnection');
+                        window.RTCPeerConnection.prototype = OriginalRPC.prototype;
                     }
                 } catch(e) {}
 
-                // --- 6. HARDWARE CONCURRENCY, MEMORY & GPU (Fixed to Pixel 7a) ---
-                try {
-                    defineSafeProp(navigator, 'hardwareConcurrency', () => 8);
-                    defineSafeProp(navigator, 'deviceMemory', () => 8);
-                    defineSafeProp(navigator, 'platform', () => 'Linux armv8l');
-                    
-                    // Spoof WebGL GPU (Tensor G3 / Mali-G715)
-                    const getParameter = WebGLRenderingContext.prototype.getParameter;
-                    WebGLRenderingContext.prototype.getParameter = makeNative(function(parameter) {
-                        if (parameter === 37445) return 'ARM'; // VENDOR
-                        if (parameter === 37446) return 'ARM'; // UNMASKED_VENDOR_WEBGL
-                        if (parameter === 37447) return 'Mali-G715'; // UNMASKED_RENDERER_WEBGL
-                        return getParameter.apply(this, arguments);
-                    }, 'getParameter');
-                    
-                    if (typeof WebGL2RenderingContext !== 'undefined') {
-                        const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
-                        WebGL2RenderingContext.prototype.getParameter = makeNative(function(parameter) {
-                            if (parameter === 37445) return 'ARM';
-                            if (parameter === 37446) return 'ARM';
-                            if (parameter === 37447) return 'Mali-G715';
-                            return getParameter2.apply(this, arguments);
-                        }, 'getParameter');
-                    }
-                } catch(e) {}
-
-                // --- 7. CLIENT HINTS (Ghost Tier Chrome 145) ---
+                // --- CLIENT HINTS ---
                 try {
                     if (navigator.userAgentData) {
                         const brands = [
@@ -313,19 +375,15 @@ object BoringEngine {
                             {brand: 'Not:A-Brand', version: '99'},
                             {brand: 'Chromium', version: '133'}
                         ];
-                        const mockData = {
-                            brands: brands,
-                            mobile: true,
-                            platform: 'Android'
-                        };
-                        
                         defineSafeProp(navigator.userAgentData, 'brands', () => brands);
                         defineSafeProp(navigator.userAgentData, 'mobile', () => true);
                         defineSafeProp(navigator.userAgentData, 'platform', () => 'Android');
                         
                         navigator.userAgentData.getHighEntropyValues = makeNative((hints) => {
                             return Promise.resolve({
-                                ...mockData,
+                                brands: brands,
+                                mobile: true,
+                                platform: 'Android',
                                 platformVersion: "15.0.0",
                                 model: "Pixel 7a",
                                 uaFullVersion: "133.0.0.0",
@@ -335,7 +393,67 @@ object BoringEngine {
                         }, 'getHighEntropyValues');
                     }
                 } catch(e) {}
-                
+
+                // --- MATCHMEDIA NORMALIZATION ---
+                try {
+                    const originalMatchMedia = window.matchMedia;
+                    const bucket = (v, s) => Math.round(v / s) * s;
+                    window.matchMedia = makeNative(function(query) {
+                        if (query.includes('width') || query.includes('height')) {
+                            const m = originalMatchMedia.call(window, query);
+                            const bucketSize = 50;
+                            const fakeMatch = (q) => {
+                                const widthMatch = q.match(/(min-width|max-width|width):\s*(\d+)px/);
+                                if (widthMatch) {
+                                    const type = widthMatch[1];
+                                    const val = parseInt(widthMatch[2]);
+                                    const bucketedWidth = bucket(window.innerWidth, bucketSize);
+                                    if (type === 'width') return bucketedWidth === val;
+                                    if (type === 'min-width') return bucketedWidth >= val;
+                                    if (type === 'max-width') return bucketedWidth <= val;
+                                }
+                                const heightMatch = q.match(/(min-height|max-height|height):\s*(\d+)px/);
+                                if (heightMatch) {
+                                    const type = heightMatch[1];
+                                    const val = parseInt(heightMatch[2]);
+                                    const bucketedHeight = bucket(window.innerHeight, bucketSize);
+                                    if (type === 'height') return bucketedHeight === val;
+                                    if (type === 'min-height') return bucketedHeight >= val;
+                                    if (type === 'max-height') return bucketedHeight <= val;
+                                }
+                                return m.matches;
+                            };
+                            return {
+                                matches: fakeMatch(query),
+                                media: query,
+                                onchange: null,
+                                addListener: makeNative(function() {}, 'addListener'),
+                                removeListener: makeNative(function() {}, 'removeListener'),
+                                addEventListener: makeNative(function() {}, 'addEventListener'),
+                                removeEventListener: makeNative(function() {}, 'removeEventListener'),
+                                dispatchEvent: makeNative(function() { return false; }, 'dispatchEvent')
+                            };
+                        }
+                        const result = originalMatchMedia.call(window, query);
+                        const fakeResult = (matches) => ({
+                            matches: matches,
+                            media: query,
+                            onchange: null,
+                            addListener: makeNative(function() {}, 'addListener'),
+                            removeListener: makeNative(function() {}, 'removeListener'),
+                            addEventListener: makeNative(function() {}, 'addEventListener'),
+                            removeEventListener: makeNative(function() {}, 'removeEventListener'),
+                            dispatchEvent: makeNative(function() { return false; }, 'dispatchEvent')
+                        });
+                        if (query.includes('orientation')) {
+                            const isLandscape = window.innerWidth >= window.innerHeight;
+                            return fakeResult(query.includes('landscape') ? isLandscape : !isLandscape);
+                        }
+                        return result;
+                    }, 'matchMedia');
+                } catch(e) {}
+
+                console.log('[JusBrowse] Fingerprint defense v3 active. Seed:', SESSION_SEED.toString(16));
             })();
         """.trimIndent()
     }
