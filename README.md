@@ -33,5 +33,5 @@ Update: codebase updated to Alpha 5.6; v0.0.5-6. Enhancement in Fingerprint Redu
 
 # 📚 Documentation
 - **[Official Wiki](wiki/Home.md)**: Comprehensive guide to features, architecture, and security.
-- **[Technical Deep-Dive](DOCUMENTATION.md)**: Detailed technical breakdown for engineers.
+- **[Technical Deep-Dive](DOCUMENTATION.md)**: Detailed technical breakdown for devs.
 
