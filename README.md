@@ -1,4 +1,8 @@
-Licensed under the GNU General Public License v3.0 or later. See LICENSE for details.
+## --9 March, 2026
+# ANNOUNCEMENT: CONTINUING IN https://github.com/shubh72010/JusBrowse-GeckoView FOR MORE ADVANCED PRIVACY
+
+
+### Licensed under the GNU General Public License v3.0 or later. See LICENSE for details.
 
 # The JusBrowse Project. 
 
